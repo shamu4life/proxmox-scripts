@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# Copyright (c) 2021-2025 community-scripts ORG
+# Author: thost96 (thost96) | Co-Author: michelroegl-brunner
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 
 source /dev/stdin <<<$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/api.func)
@@ -493,7 +495,10 @@ DESCRIPTION=$(cat <<EOF
   <h2>Docker VM with Dockge</h2>
   <p>This VM comes pre-configured with Docker and a Dockge stack.</p>
   <p>Watchtower is included and configured to <b>only</b> update the Dockge container itself.</p>
-  <p>Access Dockge at: <strong>http://&lt;YOUR_VM_IP&gt;:5001</strong></p>
+  <hr>
+  <p>Once the VM is running, find its IP in the 'Summary' tab.</p>
+  <p>Access Dockge at: <strong>http://&lt;VM_IP&gt;:5001</strong></p>
+  <p>Or by hostname: <strong>http://${HN}:5001</strong></p>
 </div>
 EOF
 )
