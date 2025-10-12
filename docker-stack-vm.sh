@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 
 # Copyright (c) 2021-2025 community-scripts ORG
 # Author: thost96 (thost96) | Co-Author: michelroegl-brunner
@@ -206,6 +207,10 @@ function default_settings() {
   START_VM="yes"
   NOTIFICATION_URL=""
   METHOD="default"
+  ENABLE_ROOT_SSH="no"
+  ENABLE_IPV6="yes"
+  STATIC_IP=""
+  GATEWAY_IP=""
   echo -e "${CONTAINERID}${BOLD}${DGN}Virtual Machine ID: ${BGN}${VMID}${CL}"
   echo -e "${CONTAINERTYPE}${BOLD}${DGN}Machine Type: ${BGN}i440fx${CL}"
   echo -e "${DISKSIZE}${BOLD}${DGN}Disk Size: ${BGN}${DISK_SIZE}${CL}"
@@ -214,6 +219,15 @@ function default_settings() {
   echo -e "${RAMSIZE}${BOLD}${DGN}RAM Size: ${BGN}${RAM_SIZE}${CL}"
   echo -e "${BRIDGE}${BOLD}${DGN}Bridge: ${BGN}${BRG}${CL}"
   echo -e "${GATEWAY}${BOLD}${DGN}Start VM when completed: ${BGN}yes${CL}"
+  if ROOT_PASSWORD=$(whiptail --backtitle "Proxmox VE Helper Scripts" --passwordbox "Set a root password for the VM" 10 60 --title "ROOT PASSWORD" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
+    if [ -z "$ROOT_PASSWORD" ]; then
+      whiptail --msgbox "A password is required to continue." 10 60
+      exit-script
+    fi
+    echo -e "${INFO}${BOLD}${DGN}Root password is set.${CL}"
+  else
+    exit-script
+  fi
   echo -e "${CREATING}${BOLD}${DGN}Creating a Docker VM using the above default settings${CL}"
 }
 
@@ -283,6 +297,39 @@ function advanced_settings() {
   BRG=${BRG:-vmbr0}
   echo -e "${BRIDGE}${BOLD}${DGN}Bridge: ${BGN}$BRG${CL}"
   
+  if MAC=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Set MAC Address (leave blank for auto)" 8 58 "$GEN_MAC" --title "MAC ADDRESS" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
+    if [ -z "$MAC" ]; then
+      MAC="$GEN_MAC"
+    fi
+  else
+    exit-script
+  fi
+  echo -e "${MACADDRESS}${BOLD}${DGN}MAC Address: ${BGN}$MAC${CL}"
+
+  if (whiptail --backtitle "Proxmox VE Helper Scripts" --title "IPv6" --yesno "Enable IPv6?" 10 58); then
+    ENABLE_IPV6="yes"
+  else
+    ENABLE_IPV6="no"
+  fi
+  echo -e "${GATEWAY}${BOLD}${DGN}IPv6 Enabled: ${BGN}$ENABLE_IPV6${CL}"
+
+  if STATIC_IP=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Set Static IPv4 Address (e.g., 192.168.1.50/24)\nLeave blank for DHCP." 10 60 --title "STATIC IPv4 ADDRESS" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
+    if [ -n "$STATIC_IP" ]; then
+      if ! GATEWAY_IP=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Set Gateway IP Address" 8 58 --title "GATEWAY IP ADDRESS" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
+        exit-script
+      fi
+    fi
+  else
+    exit-script
+  fi
+  
+  if [ -n "$STATIC_IP" ]; then
+    echo -e "${GATEWAY}${BOLD}${DGN}Static IP: ${BGN}$STATIC_IP${CL}"
+    echo -e "${GATEWAY}${BOLD}${DGN}Gateway: ${BGN}$GATEWAY_IP${CL}"
+  else
+    echo -e "${GATEWAY}${BOLD}${DGN}Network: ${BGN}DHCP${CL}"
+  fi
+
   if NOTIFICATION_URL=$(whiptail --backtitle "Proxmox VE Helper Scripts" --inputbox "Enter Watchtower Notification URL (optional)\nExample: gotify://gotify.example.com/xxxx" 10 78 --title "NOTIFICATION URL" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
      if [ -z "$NOTIFICATION_URL" ]; then
         echo -e "${INFO}${BOLD}${DGN}No notification URL provided.${CL}"
@@ -292,6 +339,23 @@ function advanced_settings() {
   else
     exit-script
   fi
+
+  if ROOT_PASSWORD=$(whiptail --backtitle "Proxmox VE Helper Scripts" --passwordbox "Set a root password for the VM" 10 60 --title "ROOT PASSWORD" --cancel-button Exit-Script 3>&1 1>&2 2>&3); then
+    if [ -z "$ROOT_PASSWORD" ]; then
+      whiptail --msgbox "A password is required to continue." 10 60
+      exit-script
+    fi
+    echo -e "${INFO}${BOLD}${DGN}Root password is set.${CL}"
+  else
+    exit-script
+  fi
+
+  if (whiptail --backtitle "Proxmox VE Helper Scripts" --title "ROOT SSH LOGIN" --yesno "Allow root login via SSH?" 10 58 --defaultno); then
+    ENABLE_ROOT_SSH="yes"
+  else
+    ENABLE_ROOT_SSH="no"
+  fi
+  echo -e "${GATEWAY}${BOLD}${DGN}Allow root SSH login: ${BGN}${ENABLE_ROOT_SSH}${CL}"
 
   if (whiptail --backtitle "Proxmox VE Helper Scripts" --title "START VIRTUAL MACHINE" --yesno "Start VM when completed?" 10 58); then
     START_VM="yes"
@@ -424,9 +488,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     env_file:
       - ./.env
-    command: --schedule "0 0 4 * * *" --cleanup --scope=dockge
-    labels:
-      - com.centurylinklabs.watchtower.scope=dockge
+    command: --schedule "0 0 4 * * *" --cleanup
 EOF
 
 # Portainer Compose File with Agent
@@ -483,8 +545,9 @@ EOF
 # .env file for Dockge
 cat <<EOF >"$TEMP_DIR/dockge.env"
 WATCHTOWER_NOTIFICATION_URL=${NOTIFICATION_URL}
-WATCHTOWER_NOTIFICATIONS_HOSTNAME=${HN} 
+WATCHTOWER_NOTIFICATIONS_HOSTNAME=${HN}
 WATCHTOWER_NOTIFICATION_TITLE_TAG=Dockge
+WATCHTOWER_SCOPE=dockge
 TZ=${TIMEZONE}
 EOF
 
@@ -516,22 +579,37 @@ EOF
 msg_ok "Created Docker stack configuration files successfully"
 
 msg_info "Customizing Debian 13 Qcow2 Disk Image"
-virt-customize -q -a "${FILE}" --install qemu-guest-agent,apt-transport-https,ca-certificates,curl,gnupg,lsb-release >/dev/null &&
-  virt-customize -q -a "${FILE}" --run-command "mkdir -p /etc/apt/keyrings && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg" >/dev/null &&
-  virt-customize -q -a "${FILE}" --run-command "echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian trixie stable' > /etc/apt/sources.list.d/docker.list" >/dev/null &&
-  virt-customize -q -a "${FILE}" --run-command "apt-get update -qq && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin" >/dev/null &&
-  virt-customize -q -a "${FILE}" --run-command "systemctl enable docker" >/dev/null &&
-  virt-customize -q -a "${FILE}" --run-command "mkdir -p /opt/stacks/dockge" >/dev/null &&
-  virt-customize -q -a "${FILE}" --run-command "mkdir -p /opt/stacks/portainer" >/dev/null &&
-  virt-customize -q -a "${FILE}" --upload "$TEMP_DIR/dockge-compose.yml:/opt/stacks/dockge/docker-compose.yml" >/dev/null &&
-  virt-customize -q -a "${FILE}" --upload "$TEMP_DIR/dockge.env:/opt/stacks/dockge/.env" >/dev/null &&
-  virt-customize -q -a "${FILE}" --upload "$TEMP_DIR/portainer-compose.yml:/opt/stacks/portainer/docker-compose.yml" >/dev/null &&
-  virt-customize -q -a "${FILE}" --upload "$TEMP_DIR/initial-startup.sh:/usr/local/bin/initial-startup.sh" >/dev/null &&
-  virt-customize -q -a "${FILE}" --upload "$TEMP_DIR/initial-startup.service:/etc/systemd/system/initial-startup.service" >/dev/null &&
-  virt-customize -q -a "${FILE}" --chmod "0755:/usr/local/bin/initial-startup.sh" >/dev/null &&
-  virt-customize -q -a "${FILE}" --run-command "systemctl enable initial-startup.service" >/dev/null &&
-  virt-customize -q -a "${FILE}" --hostname "${HN}" >/dev/null &&
-  virt-customize -q -a "${FILE}" --run-command "echo -n > /etc/machine-id" >/dev/null
+# Prepare customization commands
+virt_customize_cmd="virt-customize -q -a ${FILE}"
+virt_customize_cmd+=" --root-password password:${ROOT_PASSWORD}"
+virt_customize_cmd+=" --install qemu-guest-agent,apt-transport-https,ca-certificates,curl,gnupg,lsb-release"
+virt_customize_cmd+=" --hostname ${HN}"
+virt_customize_cmd+=" --upload $TEMP_DIR/dockge-compose.yml:/opt/stacks/dockge/docker-compose.yml"
+virt_customize_cmd+=" --upload $TEMP_DIR/dockge.env:/opt/stacks/dockge/.env"
+virt_customize_cmd+=" --upload $TEMP_DIR/portainer-compose.yml:/opt/stacks/portainer/docker-compose.yml"
+virt_customize_cmd+=" --upload $TEMP_DIR/initial-startup.sh:/usr/local/bin/initial-startup.sh"
+virt_customize_cmd+=" --upload $TEMP_DIR/initial-startup.service:/etc/systemd/system/initial-startup.service"
+virt_customize_cmd+=" --chmod 0755:/usr/local/bin/initial-startup.sh"
+
+# Add run commands based on user choices
+if [ "$ENABLE_ROOT_SSH" == "yes" ]; then
+  virt_customize_cmd+=" --run-command 'sed -i \"s/^#*PermitRootLogin.*/PermitRootLogin yes/g\" /etc/ssh/sshd_config'"
+fi
+if [ "$ENABLE_IPV6" == "no" ]; then
+  virt_customize_cmd+=" --run-command 'echo \"net.ipv6.conf.all.disable_ipv6 = 1\" > /etc/sysctl.d/99-disable-ipv6.conf; echo \"net.ipv6.conf.default.disable_ipv6 = 1\" >> /etc/sysctl.d/99-disable-ipv6.conf'"
+fi
+virt_customize_cmd+=" --run-command 'mkdir -p /etc/apt/keyrings && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg'"
+virt_customize_cmd+=" --run-command \"echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian trixie stable' > /etc/apt/sources.list.d/docker.list\""
+virt_customize_cmd+=" --run-command 'apt-get update -qq && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin'"
+virt_customize_cmd+=" --run-command 'systemctl enable docker'"
+virt_customize_cmd+=" --run-command 'mkdir -p /opt/stacks/dockge'"
+virt_customize_cmd+=" --run-command 'mkdir -p /opt/stacks/portainer'"
+virt_customize_cmd+=" --run-command 'systemctl enable initial-startup.service'"
+virt_customize_cmd+=" --run-command 'echo -n > /etc/machine-id'"
+
+# Execute all customizations in one go
+eval $virt_customize_cmd >/dev/null
+
 msg_ok "Customized image with Docker, Dockge, and Portainer successfully"
 
 msg_info "Expanding root partition to use full disk space"
@@ -550,6 +628,12 @@ qm set $VMID \
   -scsi0 ${DISK1_REF},${THIN}size=${DISK_SIZE} \
   -boot order=scsi0 \
   -serial0 socket >/dev/null
+
+# Set static IP if provided
+if [ -n "$STATIC_IP" ] && [ -n "$GATEWAY_IP" ]; then
+  qm set $VMID --ipconfig0 ip=$STATIC_IP,gw=$GATEWAY_IP
+fi
+
 qm set $VMID --agent enabled=1 >/dev/null
 
 DESCRIPTION=$(cat <<EOF
