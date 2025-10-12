@@ -28,7 +28,7 @@ METHOD=""
 NSAPP="docker-vm"
 var_os="debian"
 var_version="13"
-DISK_SIZE="10G"
+DISK_SIZE="25G"
 
 YW=$(echo "\033[33m")
 BL=$(echo "\033[36m")
