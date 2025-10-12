@@ -540,7 +540,7 @@ msg_ok "Expanded image to full size"
 
 msg_info "Creating the Docker VM"
 qm create $VMID -agent 1${MACHINE} -tablet 0 -localtime 1 -bios ovmf${CPU_TYPE} -cores $CORE_COUNT -memory $RAM_SIZE \
-  -name $HN -tags community-script,dockge,portainer -net0 virtio,bridge=$BRG,macaddr=$MAC$VLAN$MTU -onboot 1 -ostype l26 -scsihw virtio-scsi-pci
+  -name $HN -tags docker,dockge,portainer,debian13 -net0 virtio,bridge=$BRG,macaddr=$MAC$VLAN$MTU -onboot 1 -ostype l26 -scsihw virtio-scsi-pci
 pvesm alloc $STORAGE $VMID $DISK0 4M 1>&/dev/null
 qm importdisk $VMID ${FILE} $STORAGE ${DISK_IMPORT:-} 1>&/dev/null
 qm set $VMID \
@@ -552,7 +552,6 @@ qm set $VMID --agent enabled=1 >/dev/null
 
 DESCRIPTION=$(cat <<EOF
 <div align='center'>
-  <a href='https://Helper-Scripts.com' target='_blank' rel='noopener noreferrer'><img src='https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/images/logo-81x112.png' alt='Logo'/></a>
   <h2>Docker VM with Dockge & Portainer</h2>
   <p>This VM comes pre-configured with Docker, Dockge, and Portainer.</p>
   <hr>
