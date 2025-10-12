@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 
 # Copyright (c) 2021-2025 community-scripts ORG
 # Author: thost96 (thost96) | Co-Author: michelroegl-brunner
@@ -198,7 +197,7 @@ function default_settings() {
   FORMAT=",efitype=4m"
   MACHINE=""
   DISK_CACHE=""
-  DISK_SIZE="10G"
+  DISK_SIZE="25G"
   HN="docker"
   CPU_TYPE=""
   CORE_COUNT="2"
@@ -425,7 +424,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     env_file:
       - ./.env
-    command: dockge --schedule "0 0 4 * * *" --cleanup
+    command: --schedule "0 0 4 * * *" --cleanup --scope=dockge
+    labels:
+      - com.centurylinklabs.watchtower.scope=dockge
 EOF
 
 # Portainer Compose File with Agent
