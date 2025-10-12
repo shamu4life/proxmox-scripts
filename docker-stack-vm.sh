@@ -437,7 +437,7 @@ services:
     container_name: portainer-agent
     image: portainer/agent
     ports:
-      - 9002:9001
+      - 9001:9001
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
