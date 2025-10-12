@@ -584,6 +584,8 @@ virt_customize_cmd="virt-customize -q -a ${FILE}"
 virt_customize_cmd+=" --root-password password:${ROOT_PASSWORD}"
 virt_customize_cmd+=" --install qemu-guest-agent,apt-transport-https,ca-certificates,curl,gnupg,lsb-release"
 virt_customize_cmd+=" --hostname ${HN}"
+virt_customize_cmd+=" --run-command 'mkdir -p /opt/stacks/dockge'"
+virt_customize_cmd+=" --run-command 'mkdir -p /opt/stacks/portainer'"
 virt_customize_cmd+=" --upload $TEMP_DIR/dockge-compose.yml:/opt/stacks/dockge/docker-compose.yml"
 virt_customize_cmd+=" --upload $TEMP_DIR/dockge.env:/opt/stacks/dockge/.env"
 virt_customize_cmd+=" --upload $TEMP_DIR/portainer-compose.yml:/opt/stacks/portainer/docker-compose.yml"
@@ -602,8 +604,6 @@ virt_customize_cmd+=" --run-command 'mkdir -p /etc/apt/keyrings && curl -fsSL ht
 virt_customize_cmd+=" --run-command \"echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian trixie stable' > /etc/apt/sources.list.d/docker.list\""
 virt_customize_cmd+=" --run-command 'apt-get update -qq && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin'"
 virt_customize_cmd+=" --run-command 'systemctl enable docker'"
-virt_customize_cmd+=" --run-command 'mkdir -p /opt/stacks/dockge'"
-virt_customize_cmd+=" --run-command 'mkdir -p /opt/stacks/portainer'"
 virt_customize_cmd+=" --run-command 'systemctl enable initial-startup.service'"
 virt_customize_cmd+=" --run-command 'echo -n > /etc/machine-id'"
 
@@ -631,7 +631,7 @@ qm set $VMID \
 
 # Set static IP if provided
 if [ -n "$STATIC_IP" ] && [ -n "$GATEWAY_IP" ]; then
-  qm set $VMID --ipconfig0 ip=$STATIC_IP,gw=$GATEWAY_IP
+  qm set $VMID --ipconfig0 ip=$STATIC_IP,gw=$GATEway_IP
 fi
 
 qm set $VMID --agent enabled=1 >/dev/null
