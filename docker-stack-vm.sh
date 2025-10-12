@@ -429,23 +429,55 @@ services:
     command: dockge --schedule "0 0 4 * * *" --cleanup
 EOF
 
-# Portainer Compose File
+# Portainer Compose File with Agent
 cat <<EOF >"$TEMP_DIR/portainer-compose.yml"
-version: '3.8'
+name: portainer
 services:
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: portainer
-    restart: unless-stopped
+  portainer-agent:
+    container_name: portainer-agent
+    image: portainer/agent
     ports:
-      - "8000:8000"
-      - "9443:9443"
+      - 9002:9001
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/volumes:/var/lib/docker/volumes
+    depends_on:
+      - portainer
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 1024M
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        window: 120s
+  portainer:
+    container_name: portainer
+    image: portainer/portainer-ce:latest
+    ports:
+      - 8000:8000
+      - 9443:9443
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - portainer_data:/data
-
+    networks:
+      - portainer_network
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 1024M
+      restart_policy:
+        condition: unless-stopped
+        delay: 5s
+        window: 120s
+networks:
+  portainer_network:
+    driver: bridge
 volumes:
   portainer_data:
+    name: portainer_data
 EOF
 
 # .env file for Dockge
@@ -521,13 +553,13 @@ qm set $VMID --agent enabled=1 >/dev/null
 
 DESCRIPTION=$(cat <<EOF
 <div align='center'>
-  <a href='https://Helper-Scripts.com' target='blank' rel='noopener noreferrer'><img src='https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/images/logo-81x112.png' alt='Logo'/></a>
+  <a href='https://Helper-Scripts.com' target='_blank' rel='noopener noreferrer'><img src='https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/images/logo-81x112.png' alt='Logo'/></a>
   <h2>Docker VM with Dockge & Portainer</h2>
   <p>This VM comes pre-configured with Docker, Dockge, and Portainer.</p>
   <hr>
-  <p>Once the VM is running, find its IP in the 'Summary' tab.</p>
-  <p>Access Dockge at: <strong>http://&lt;VM_IP&gt;:5001</strong></p>
-  <p>Access Portainer at: <strong>https://&lt;VM_IP&gt;:9443</strong></p>
+  <p>Find the VM's IP in the 'Summary' tab once it's running.</p>
+  <p>Access Dockge at: <strong><a href="http://${HN}:5001" target="_blank">http://${HN}:5001</a></strong></p>
+  <p>Access Portainer at: <strong><a href="https://${HN}:9443" target="_blank">https://${HN}:9443</a></strong></p>
 </div>
 EOF
 )
