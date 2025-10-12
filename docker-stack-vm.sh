@@ -479,15 +479,18 @@ services:
       - /opt/stacks:/opt/stacks
     environment:
       - DOCKGE_STACKS_DIR=/opt/stacks
-    env_file:
-      - ./.env
+      - TZ=${TIMEZONE}
   watchtower:
     image: containrrr/watchtower
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    env_file:
-      - ./.env
+    environment:
+      - WATCHTOWER_NOTIFICATION_URL=${NOTIFICATION_URL}
+      - WATCHTOWER_NOTIFICATIONS_HOSTNAME=${HN}
+      - WATCHTOWER_NOTIFICATION_TITLE_TAG=Dockge
+      - WATCHTOWER_SCOPE=dockge
+      - TZ=${TIMEZONE}
     command: --schedule "0 0 4 * * *" --cleanup
 EOF
 
@@ -503,6 +506,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/volumes:/var/lib/docker/volumes
+    environment:
+      - TZ=${TIMEZONE}
     depends_on:
       - portainer
     deploy:
@@ -525,6 +530,8 @@ services:
       - portainer_data:/data
     networks:
       - portainer_network
+    environment:
+      - TZ=${TIMEZONE}
     deploy:
       resources:
         limits:
@@ -540,15 +547,6 @@ networks:
 volumes:
   portainer_data:
     name: portainer_data
-EOF
-
-# .env file for Dockge
-cat <<EOF >"$TEMP_DIR/dockge.env"
-WATCHTOWER_NOTIFICATION_URL=${NOTIFICATION_URL}
-WATCHTOWER_NOTIFICATIONS_HOSTNAME=${HN}
-WATCHTOWER_NOTIFICATION_TITLE_TAG=Dockge
-WATCHTOWER_SCOPE=dockge
-TZ=${TIMEZONE}
 EOF
 
 # One-shot startup script
@@ -579,7 +577,6 @@ EOF
 msg_ok "Created Docker stack configuration files successfully"
 
 msg_info "Customizing Debian 13 Qcow2 Disk Image"
-
 # Prepare customization commands
 virt_customize_cmd="virt-customize -q -a ${FILE}"
 virt_customize_cmd+=" --root-password password:${ROOT_PASSWORD}"
@@ -588,7 +585,6 @@ virt_customize_cmd+=" --hostname ${HN}"
 virt_customize_cmd+=" --run-command 'mkdir -p /opt/stacks/dockge'"
 virt_customize_cmd+=" --run-command 'mkdir -p /opt/stacks/portainer'"
 virt_customize_cmd+=" --upload $TEMP_DIR/dockge-compose.yml:/opt/stacks/dockge/docker-compose.yml"
-virt_customize_cmd+=" --upload $TEMP_DIR/dockge.env:/opt/stacks/dockge/.env"
 virt_customize_cmd+=" --upload $TEMP_DIR/portainer-compose.yml:/opt/stacks/portainer/docker-compose.yml"
 virt_customize_cmd+=" --upload $TEMP_DIR/initial-startup.sh:/usr/local/bin/initial-startup.sh"
 virt_customize_cmd+=" --upload $TEMP_DIR/initial-startup.service:/etc/systemd/system/initial-startup.service"
