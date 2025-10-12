@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
 
 # Copyright (c) 2021-2025 community-scripts ORG
-# Author: thost96 (thost96) | Co-Author: michelroegl-brunner
-# License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
+# Author: shamu4life | Co-Author: Google Gemini
+# License: MIT
 
 source /dev/stdin <<<$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/api.func)
 
 function header_info() {
   clear
   cat <<"EOF"
-    ____             __                _    ____  ___
-   / __ \____  _____/ /_____  _____   | |  / /  |/  /
-  / / / / __ \/ ___/ //_/ _ \/ ___/   | | / / /|_/ /
- / /_/ / /_/ / /__/ ,< /  __/ /       | |/ / /  / /
-/_____/\____/\___/_/|_|\___/_/        |___/_/  /_/
-
+  
+  /$$$$$$$                      /$$                                 /$$    /$$ /$$      /$$
+| $$__  $$                    | $$                                | $$   | $$| $$$    /$$$
+| $$  \ $$  /$$$$$$   /$$$$$$$| $$   /$$  /$$$$$$   /$$$$$$       | $$   | $$| $$$$  /$$$$
+| $$  | $$ /$$__  $$ /$$_____/| $$  /$$/ /$$__  $$ /$$__  $$      |  $$ / $$/| $$ $$/$$ $$
+| $$  | $$| $$  \ $$| $$      | $$$$$$/ | $$$$$$$$| $$  \__/       \  $$ $$/ | $$  $$$| $$
+| $$  | $$| $$  | $$| $$      | $$_  $$ | $$_____/| $$              \  $$$/  | $$\  $ | $$
+| $$$$$$$/|  $$$$$$/|  $$$$$$$| $$ \  $$|  $$$$$$$| $$               \  $/   | $$ \/  | $$
+|_______/  \______/  \_______/|__/  \__/ \_______/|__/                \_/    |__/     |__/                                                                                        
+                                                                                          
 EOF
 }
 header_info
@@ -580,7 +584,7 @@ msg_info "Customizing Debian 13 Qcow2 Disk Image"
 # Prepare customization commands
 virt_customize_cmd="virt-customize -q -a ${FILE}"
 virt_customize_cmd+=" --root-password password:${ROOT_PASSWORD}"
-virt_customize_cmd+=" --install qemu-guest-agent,apt-transport-https,ca-certificates,curl,gnupg,lsb-release"
+virt_customize_cmd+=" --install qemu-guest-agent,apt-transport-https,ca-certificates,curl,gnupg,lsb-release,openssh-server"
 virt_customize_cmd+=" --hostname ${HN}"
 virt_customize_cmd+=" --run-command 'mkdir -p /opt/stacks/dockge'"
 virt_customize_cmd+=" --run-command 'mkdir -p /opt/stacks/portainer'"
