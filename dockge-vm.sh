@@ -402,7 +402,6 @@ fi
 
 msg_info "Creating Dockge configuration files"
 cat <<EOF >"$TEMP_DIR/docker-compose.yml"
-version: "3.8"
 services:
   dockge:
     image: louislam/dockge:1
