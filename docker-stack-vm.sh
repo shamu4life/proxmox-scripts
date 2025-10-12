@@ -231,7 +231,7 @@ function advanced_settings() {
         sleep 2
         continue
       fi
-      echo -e "${CONTAINERID}${BOLD}${DGN}Virtual Machine ID: ${BGN}$VMID}${CL}"
+      echo -e "${CONTAINERID}${BOLD}${DGN}Virtual Machine ID: ${BGN}${VMID}${CL}"
       break
     else
       exit-script
@@ -259,7 +259,7 @@ function advanced_settings() {
       echo -e "${CROSS}${RD}Invalid Disk Size.${CL}"
       exit-script
     fi
-    echo -e "${DISKSIZE}${BOLD}${DGN}Disk Size: ${BGN}$DISK_SIZE}${CL}"
+    echo -e "${DISKSIZE}${BOLD}${DGN}Disk Size: ${BGN}${DISK_SIZE}${CL}"
   else
     exit-script
   fi
@@ -547,7 +547,6 @@ qm set $VMID \
   -scsi0 ${DISK1_REF},${THIN}size=${DISK_SIZE} \
   -boot order=scsi0 \
   -serial0 socket >/dev/null
-qm resize $VMID scsi0 8G >/dev/null
 qm set $VMID --agent enabled=1 >/dev/null
 
 DESCRIPTION=$(cat <<EOF
