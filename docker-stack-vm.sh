@@ -579,6 +579,7 @@ EOF
 msg_ok "Created Docker stack configuration files successfully"
 
 msg_info "Customizing Debian 13 Qcow2 Disk Image"
+
 # Prepare customization commands
 virt_customize_cmd="virt-customize -q -a ${FILE}"
 virt_customize_cmd+=" --root-password password:${ROOT_PASSWORD}"
@@ -631,7 +632,7 @@ qm set $VMID \
 
 # Set static IP if provided
 if [ -n "$STATIC_IP" ] && [ -n "$GATEWAY_IP" ]; then
-  qm set $VMID --ipconfig0 ip=$STATIC_IP,gw=$GATEway_IP
+  qm set $VMID --ipconfig0 ip=$STATIC_IP,gw=$GATEWAY_IP
 fi
 
 qm set $VMID --agent enabled=1 >/dev/null
