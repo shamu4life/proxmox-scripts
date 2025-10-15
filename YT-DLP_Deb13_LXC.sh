@@ -1,8 +1,14 @@
 #!/bin/bash
 #
 # Description: This script automates the creation and configuration of a
-#              dedicated Proxmox LXC container for running yt-dlp. (v2)
+#              dedicated Proxmox LXC container for running yt-dlp. (v3)
 #
+
+# --- Function to handle errors ---
+handle_error() {
+    echo -e "\n${RED}Error: $1${NC}" >&2
+    exit 1
+}
 
 # --- Global Variables & Colors ---
 TEMPLATE="debian-13-standard_13.0-1_amd64.tar.zst"
@@ -11,12 +17,6 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# --- Function to handle errors ---
-handle_error() {
-    echo -e "\n${RED}Error: $1${NC}" >&2
-    exit 1
-}
-
 # --- Check for root privileges ---
 if [ "$(id -u)" -ne 0 ]; then
     handle_error "This script must be run as root."
@@ -24,6 +24,19 @@ fi
 
 # --- Main Script ---
 clear
+
+# --- ASCII Art Header ---
+cat << "EOF"
+ __     _________     _____  _      _____  
+ \ \   / /__   __|   |  __ \| |    |  __ \ 
+  \ \_/ /   | |______| |  | | |    | |__) |
+   \   /    | |______| |  | | |    |  ___/ 
+    | |     | |      | |__| | |____| |     
+    |_|     |_|      |_____/|______|_|     
+                                           
+            
+EOF
+
 echo -e "${GREEN}--- Proxmox yt-dlp LXC Creation Script ---${NC}"
 echo "This script will guide you through creating a new Debian 13 container."
 
