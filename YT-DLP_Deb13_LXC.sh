@@ -9,6 +9,7 @@
 #   - Prompts for static IP or DHCP configuration.
 #   - Provides default values for hostname and resources.
 #   - Lets user select the network bridge from a list.
+#   - Includes a robust password prompt to prevent input errors.
 # #############################################################################
 
 # --- STOP ON ERRORS ---
@@ -78,10 +79,14 @@ HOSTNAME=${HOSTNAME:-$DEFAULT_HOSTNAME}
 
 # Prompt for Password (Mandatory & Secure)
 while true; do
-    read -sp "Enter the root password for the container: " PASSWORD
-    echo
-    read -sp "Confirm the root password: " PASSWORD_CONFIRM
-    echo
+    # Explicitly read from the terminal TTY to bypass input redirection issues
+    printf "Enter the root password for the container: "
+    read -s PASSWORD </dev/tty
+    printf "\n"
+    printf "Confirm the root password: "
+    read -s PASSWORD_CONFIRM </dev/tty
+    printf "\n"
+
     if [ "$PASSWORD" = "$PASSWORD_CONFIRM" ] && [ -n "$PASSWORD" ]; then
         break
     elif [ -z "$PASSWORD" ]; then
@@ -156,65 +161,4 @@ done
 echo "---"
 
 # --- CONFIRMATION ---
-echo "⚙️  Review the configuration:"
-echo "--------------------------------"
-echo "Container ID:   $CT_ID"
-echo "Hostname:       $HOSTNAME"
-echo "CPU Cores:      $CORES"
-echo "RAM:            $RAM_MB MB"
-echo "Disk Size:      $DISK_GB GB"
-echo "Network Bridge: $BRIDGE"
-if [ -n "$IP_ADDRESS" ]; then
-    echo "IP Address:     $IP_ADDRESS (Static)"
-    echo "Gateway:        $GATEWAY"
-else
-    echo "IP Address:     DHCP"
-fi
-echo "Storage Pool:   $STORAGE"
-echo "Base OS:        Debian 13 (Trixie)"
-echo "--------------------------------"
-
-read -p "Proceed with creation? (y/N): " CONFIRM
-if [[ ! "$CONFIRM" =~ ^[yY](es)*$ ]]; then
-    echo "🚫 Creation cancelled."
-    exit 1
-fi
-
-# --- CONTAINER CREATION ---
-echo "🔥 Creating LXC container $CT_ID ($HOSTNAME)..."
-
-pct create $CT_ID $TEMPLATE \
-    --hostname $HOSTNAME \
-    --password $PASSWORD \
-    --cores $CORES \
-    --memory $RAM_MB \
-    --rootfs $STORAGE:$DISK_GB \
-    --net0 name=eth0,bridge=$BRIDGE,$NET_CONFIG \
-    --onboot 1 \
-    --start 1
-
-echo "⏳ Waiting for container to boot and get a network connection..."
-sleep 15
-
-echo "🚀 Container created. Now configuring software..."
-pct exec $CT_ID -- bash -c "apt-get update && apt-get upgrade -y"
-echo "✅ System updated."
-pct exec $CT_ID -- bash -c "apt-get install -y ffmpeg python3-pip"
-echo "✅ Dependencies installed."
-pct exec $CT_ID -- bash -c "pip install yt-dlp"
-echo "✅ yt-dlp installed."
-
-# Get IP address for the final message
-if [ -n "$GATEWAY" ]; then
-    CT_IP="${IP_ADDRESS%/*}" # For static IP, remove CIDR from address
-else
-    CT_IP=$(pct exec $CT_ID -- ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}') # For DHCP, query it
-fi
-
-echo ""
-echo "🎉 --- Success! --- 🎉"
-echo "LXC Container '$HOSTNAME' (ID: $CT_ID) is ready."
-echo "IP Address: $CT_IP"
-echo "Access with: ssh root@$CT_IP"
-
-exit 0
+echo "⚙️
