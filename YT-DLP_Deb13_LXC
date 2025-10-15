@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
-source <(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
+
 # Copyright (c) 2021-2025 tteck
 # Author: tteck (tteckster)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/yt-dlp/yt-dlp
+#
+# DO NOT EDIT THIS SCRIPT
+# This script is maintained by community-scripts
+# https://github.com/community-scripts/ProxmoxVE/
 
-APP="YT-DLP"
+source <(curl -sSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
+
+# Set container variables
+APP="yt-dlp"
 var_tags="${var_tags:-media}"
-var_cpu="${var_cpu:-1}"
-var_ram="${var_ram:-512}"
-var_disk="${var_disk:-2}"
+var_cpu="${var_cpu:-2}"
+var_ram="${var_ram:-2048}"
+var_disk="${var_disk:-10}"
 var_os="${var_os:-debian}"
 var_version="${var_version:-13}"
 var_unprivileged="${var_unprivileged:-1}"
-var_install="" # <--- ADD THIS LINE TO FIX THE ERROR
 
-header_info "$APP"
+# Run setup
+header_info
 variables
 color
 catch_errors
@@ -24,25 +31,56 @@ function update_script() {
   header_info
   check_container_storage
   check_container_resources
-  if [[ ! -d /var ]]; then
-    msg_error "No ${APP} Installation Found!"
-    exit
-  fi
-  msg_info "Updating $APP LXC"
+  
+  msg_info "Updating base system"
   $STD apt-get update
   $STD apt-get -y upgrade
-  msg_ok "Updated $APP LXC"
+  msg_ok "Base system updated"
+
+  msg_info "Updating yt-dlp"
+  $STD pip3 install --upgrade yt-dlp
+  msg_ok "yt-dlp updated"
+
+  msg_info "Cleaning up"
+  $STD apt-get -y autoremove
+  $STD apt-get -y autoclean
+  msg_ok "Cleanup complete"
   exit
 }
 
 start
 build_container
+
+# Get container IP
+IP=$(get_ip)
+
+# Create the installation script in the container
+cat <<EOF >/etc/systemd/system/install.service
+[Unit]
+Description=Install yt-dlp and dependencies
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c ' \
+  DEBIAN_FRONTEND=noninteractive; \
+  apt-get update; \
+  apt-get install -y ffmpeg python3-pip aria2 ca-certificates git; \
+  pip3 install --upgrade yt-dlp; \
+  apt-get autoremove -y; \
+  apt-get clean -y'
+ExecStartPost=/bin/bash -c "echo 'yt-dlp is installed. You can access this container via SSH or the Proxmox console.' > /etc/motd"
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Enable and start the installation service
+$STD systemctl enable --now install.service
+
 description
 
-msg_info "Installing YT-DLP and dependencies..."
-$STD apt-get update
-$STD apt-get -y install yt-dlp ffmpeg
-msg_ok "Successfully installed YT-DLP and FFmpeg."
-
 msg_ok "Completed Successfully!\n"
-echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"
+echo -e "${CREATING}${GN}${APP} has been successfully installed.${CL}"
+echo -e "${INFO}${YW} You can access the container via the Proxmox console or SSH (if configured).${CL}"
