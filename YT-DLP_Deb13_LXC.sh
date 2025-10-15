@@ -9,15 +9,22 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # --- ASCII Art Header ---
-# This will be displayed to the user when the script is run.
 cat << "EOF"
 
 ${BLUE}
-  __  __ _____ ____   _     _
- \ \/ /|  ___||  _ \ | |   | |
-  \  / | |_   | | | || |   | |
-  /  \ |  _|  | |_| || |___| |___
- /_/\_\|_|    |____/ |_____|_____|
+
+ █████ █████ ███████████            ██████████   █████       ███████████ 
+▒▒███ ▒▒███ ▒█▒▒▒███▒▒▒█           ▒▒███▒▒▒▒███ ▒▒███       ▒▒███▒▒▒▒▒███
+ ▒▒███ ███  ▒   ▒███  ▒             ▒███   ▒▒███ ▒███        ▒███    ▒███
+  ▒▒█████       ▒███     ██████████ ▒███    ▒███ ▒███        ▒██████████ 
+   ▒▒███        ▒███    ▒▒▒▒▒▒▒▒▒▒  ▒███    ▒███ ▒███        ▒███▒▒▒▒▒▒  
+    ▒███        ▒███                ▒███    ███  ▒███      █ ▒███        
+    █████       █████               ██████████   ███████████ █████       
+   ▒▒▒▒▒       ▒▒▒▒▒               ▒▒▒▒▒▒▒▒▒▒   ▒▒▒▒▒▒▒▒▒▒▒ ▒▒▒▒▒        
+                                                                         
+                                                                         
+                                                                         
+  
 ${NC}
  This script automates the creation of a Proxmox LXC for yt-dlp.
  It prompts for user input, provides defaults, and handles setup automatically.
@@ -26,10 +33,7 @@ EOF
 
 # --- Script Variables ---
 TEMPLATE_STORAGE="local"
-TEMPLATE_NAME="debian-12-standard"
-# Note: The minor version (e.g., 12.5-1) might change over time.
-# The script will try to find this specific version.
-TEMPLATE_FILE="${TEMPLATE_NAME}_12.5-1_amd64.tar.zst"
+TEMPLATE_OS_NAME="debian-12-standard"
 
 # --- Helper Functions ---
 function msg_info() {
@@ -66,21 +70,24 @@ if ! command -v jq &> /dev/null; then
 fi
 
 # --- Template Management ---
-msg_info "Checking for Debian 12 (Bookworm) template..."
-if ! pveam available --section system | grep -q $TEMPLATE_FILE; then
-    msg_warn "Template version '${TEMPLATE_FILE}' not found. Updating template list..."
-    pveam update
-    if ! pveam available --section system | grep -q $TEMPLATE_FILE; then
-        msg_error "Debian 12 template not available. Please check your Proxmox sources."
-    fi
-fi
+msg_info "Searching for the latest Debian 12 (Bookworm) template..."
+pveam update >/dev/null # Ensure the list is fresh
 
-if ! pveam list $TEMPLATE_STORAGE | grep -q $TEMPLATE_FILE; then
+# Dynamically find the latest Debian 12 template filename
+LATEST_TEMPLATE=$(pveam available --section system | grep "$TEMPLATE_OS_NAME" | sort -V | tail -n 1 | awk '{print $2}')
+
+if [ -z "$LATEST_TEMPLATE" ]; then
+    msg_error "Could not find any Debian 12 templates. Please check your Proxmox sources."
+fi
+msg_ok "Found latest template: ${GREEN}$LATEST_TEMPLATE${NC}"
+
+# Check if the found template is already downloaded
+if ! pveam list $TEMPLATE_STORAGE | grep -q $LATEST_TEMPLATE; then
     msg_warn "Template not found locally. Downloading now..."
-    pveam download $TEMPLATE_STORAGE $TEMPLATE_FILE || msg_error "Failed to download template."
+    pveam download $TEMPLATE_STORAGE $LATEST_TEMPLATE || msg_error "Failed to download template."
     msg_ok "Template downloaded successfully."
 else
-    msg_ok "Debian 12 template is already available."
+    msg_ok "Latest Debian 12 template is already available locally."
 fi
 
 # --- Gather User Input ---
@@ -152,7 +159,7 @@ fi
 # --- Create and Configure Container ---
 msg_info "Creating LXC container... This may take a moment."
 
-pct create $CT_ID ${TEMPLATE_STORAGE}:vztmpl/$TEMPLATE_FILE \
+pct create $CT_ID ${TEMPLATE_STORAGE}:vztmpl/$LATEST_TEMPLATE \
     --hostname $HOSTNAME \
     --password $ROOT_PASSWORD \
     --cores $CORES \
@@ -171,10 +178,10 @@ sleep 10 # A simple delay to allow the container to initialize
 
 # Configure container
 msg_info "Updating package lists and upgrading system..."
-pct exec $CT_ID -- bash -c "apt-get update && apt-get upgrade -y" || msg_warn "Failed to update container packages."
+pct exec $CT_ID -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get update && apt-get upgrade -y" || msg_warn "Failed to update container packages."
 
 msg_info "Installing dependencies: python3-pip and ffmpeg..."
-pct exec $CT_ID -- bash -c "apt-get install -y python3-pip ffmpeg" || msg_error "Failed to install dependencies."
+pct exec $CT_ID -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip ffmpeg" || msg_error "Failed to install dependencies."
 
 msg_info "Installing/Updating yt-dlp..."
 pct exec $CT_ID -- bash -c "pip install -U yt-dlp" || msg_error "Failed to install yt-dlp."
