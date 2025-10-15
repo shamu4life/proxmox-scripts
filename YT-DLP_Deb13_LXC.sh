@@ -13,11 +13,16 @@ NC='\033[0m' # No Color
 cat << "EOF"
 
 ${BLUE}
-  __  __ _____ ____   _     _
- \ \/ /|  ___||  _ \ | |   | |
-  \  / | |_   | | | || |   | |
-  /  \ |  _|  | |_| || |___| |___
- /_/\_\|_|    |____/ |_____|_____|
+                                                            
+mmm    mmm mmmmmmmm            mmmmm     mm        mmmmmm   
+ ##m  m##  """##"""            ##"""##   ##        ##""""#m 
+  ##mm##      ##               ##    ##  ##        ##    ## 
+   "##"       ##               ##    ##  ##        ######"  
+    ##        ##      #####    ##    ##  ##        ##       
+    ##        ##               ##mmm##   ##mmmmmm  ##       
+    ""        ""               """""     """"""""  ""       
+                                                            
+                                                            
 ${NC}
  This script automates the creation of a Proxmox LXC for yt-dlp.
  It prompts for user input, provides defaults, and handles setup automatically.
