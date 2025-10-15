@@ -3,7 +3,8 @@
 # #############################################################################
 # Interactive script to create a Proxmox LXC container for yt-dlp
 # Base OS: Debian 13 (Trixie)
-# Features: 
+# Features:
+#   - Automatically suggests the next available container ID.
 #   - Automatically downloads the template if it is not found.
 #   - Prompts for static IP or DHCP configuration.
 #   - Provides default values for hostname and resources.
@@ -16,10 +17,10 @@ set -e
 # --- CONFIGURATION ---
 STORAGE="local-lvm"                   # Proxmox storage pool for the container's disk
 TEMPLATE_NAME="debian-13-standard"    # Name of the template to use
-TEMPLATE="local:vztmpl/${TEMPLATE_NAME}_13.0-1_amd64.tar.zst" 
+TEMPLATE="local:vztmpl/${TEMPLATE_NAME}_13.0-1_amd64.tar.zst"
 
 # Default values for prompts
-DEFAULT_HOSTNAME="yt-dlp-runner"
+DEFAULT_HOSTNAME="yt-dlp"
 DEFAULT_CORES="2"
 DEFAULT_RAM_MB="4096"
 DEFAULT_DISK_GB="10"
@@ -32,7 +33,7 @@ command_exists() {
 }
 
 # Check for necessary Proxmox commands
-if ! command_exists pct || ! command_exists pveam; then
+if ! command_exists pct || ! command_exists pveam || ! command_exists pvesh; then
     echo "❌ This script must be run on a Proxmox VE host."
     exit 1
 fi
@@ -56,13 +57,16 @@ echo "---"
 
 # --- USER PROMPTS ---
 
-# Prompt for Container ID (Mandatory)
+# Suggest next available CT ID and prompt for it
+NEXT_ID=$(pvesh get /cluster/nextid)
 while true; do
-    read -p "Enter a unique Container ID (e.g., 205): " CT_ID
+    read -p "Enter a unique Container ID [${NEXT_ID}]: " CT_ID
+    CT_ID=${CT_ID:-$NEXT_ID} # Assign default if input is empty
     if ! [[ "$CT_ID" =~ ^[0-9]+$ ]]; then
         echo "❌ Invalid input. Please enter a number."
     elif pct status "$CT_ID" >/dev/null 2>&1; then
-        echo "❌ Container ID $CT_ID is already in use. Please choose another."
+        echo "❌ Container ID $CT_ID is already in use."
+        NEXT_ID=$(pvesh get /cluster/nextid) # Get a new suggestion
     else
         break
     fi
@@ -111,14 +115,12 @@ done
 # --- Prompt for Network Bridge Selection ---
 echo "---"
 echo "Available network bridges:"
-# Get available bridges and store them in an array
 mapfile -t bridges < <(ip -br link show type bridge | awk '{print $1}')
 if [ ${#bridges[@]} -eq 0 ]; then
     echo "❌ No network bridges (vmbr) found. Cannot proceed."
     exit 1
 fi
 
-# Create a selection menu for the user
 select BRIDGE in "${bridges[@]}"; do
     if [ -n "$BRIDGE" ]; then
         echo "✅ You selected bridge: $BRIDGE"
