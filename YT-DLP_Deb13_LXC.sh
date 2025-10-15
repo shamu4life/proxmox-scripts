@@ -13,16 +13,11 @@ NC='\033[0m' # No Color
 cat << "EOF"
 
 ${BLUE}
-                                                            
-mmm    mmm mmmmmmmm            mmmmm     mm        mmmmmm   
- ##m  m##  """##"""            ##"""##   ##        ##""""#m 
-  ##mm##      ##               ##    ##  ##        ##    ## 
-   "##"       ##               ##    ##  ##        ######"  
-    ##        ##      #####    ##    ##  ##        ##       
-    ##        ##               ##mmm##   ##mmmmmm  ##       
-    ""        ""               """""     """"""""  ""       
-                                                            
-                                                            
+  __  __ _____ ____   _     _
+ \ \/ /|  ___||  _ \ | |   | |
+  \  / | |_   | | | || |   | |
+  /  \ |  _|  | |_| || |___| |___
+ /_/\_\|_|    |____/ |_____|_____|
 ${NC}
  This script automates the creation of a Proxmox LXC for yt-dlp.
  It prompts for user input, provides defaults, and handles setup automatically.
@@ -31,8 +26,10 @@ EOF
 
 # --- Script Variables ---
 TEMPLATE_STORAGE="local"
-TEMPLATE_NAME="debian-13-standard"
-TEMPLATE_FILE="${TEMPLATE_NAME}_13.0-1_amd64.tar.zst"
+TEMPLATE_NAME="debian-12-standard"
+# Note: The minor version (e.g., 12.5-1) might change over time.
+# The script will try to find this specific version.
+TEMPLATE_FILE="${TEMPLATE_NAME}_12.5-1_amd64.tar.zst"
 
 # --- Helper Functions ---
 function msg_info() {
@@ -69,12 +66,12 @@ if ! command -v jq &> /dev/null; then
 fi
 
 # --- Template Management ---
-msg_info "Checking for Debian 13 (Trixie) template..."
+msg_info "Checking for Debian 12 (Bookworm) template..."
 if ! pveam available --section system | grep -q $TEMPLATE_FILE; then
-    msg_warn "Template not found in list. Updating template list..."
+    msg_warn "Template version '${TEMPLATE_FILE}' not found. Updating template list..."
     pveam update
     if ! pveam available --section system | grep -q $TEMPLATE_FILE; then
-        msg_error "Debian 13 template not available. Please check your Proxmox sources."
+        msg_error "Debian 12 template not available. Please check your Proxmox sources."
     fi
 fi
 
@@ -83,7 +80,7 @@ if ! pveam list $TEMPLATE_STORAGE | grep -q $TEMPLATE_FILE; then
     pveam download $TEMPLATE_STORAGE $TEMPLATE_FILE || msg_error "Failed to download template."
     msg_ok "Template downloaded successfully."
 else
-    msg_ok "Debian 13 template is already available."
+    msg_ok "Debian 12 template is already available."
 fi
 
 # --- Gather User Input ---
