@@ -20,6 +20,7 @@ var_disk="${var_disk:-10}"
 var_os="${var_os:-debian}"
 var_version="${var_version:-12}"
 var_unprivileged="${var_unprivileged:-1}"
+var_install="false" # Prevent the helper script from trying to run a remote installer
 
 # Run setup
 header_info
@@ -27,60 +28,29 @@ variables
 color
 catch_errors
 
-function update_script() {
-  header_info
-  check_container_storage
-  check_container_resources
-  
-  msg_info "Updating base system"
-  $STD apt-get update
-  $STD apt-get -y upgrade
-  msg_ok "Base system updated"
-
-  msg_info "Updating yt-dlp"
-  $STD pip3 install --upgrade yt-dlp
-  msg_ok "yt-dlp updated"
-
-  msg_info "Cleaning up"
-  $STD apt-get -y autoremove
-  $STD apt-get -y autoclean
-  msg_ok "Cleanup complete"
-  exit
-}
-
 start
 build_container
 
-# Get container IP
-IP=$(get_ip)
+# Get the container ID
+CTID=$(pvesh get /cluster/resources --type vm --output-format json | \
+  jq -r --arg NAME "$var_hostname" '.[] | select(.name==$NAME) | .vmid')
 
-# Create the installation script in the container
-cat <<EOF >/etc/systemd/system/install.service
-[Unit]
-Description=Install yt-dlp and dependencies
-After=network.target
+# --- Direct Installation Steps ---
+msg_info "Starting yt-dlp installation..."
 
-[Service]
-Type=oneshot
-ExecStart=/bin/bash -c ' \
-  DEBIAN_FRONTEND=noninteractive; \
-  apt-get update; \
-  apt-get install -y ffmpeg python3-pip aria2 ca-certificates git; \
-  pip3 install --upgrade yt-dlp; \
-  apt-get autoremove -y; \
+# Run all installation commands inside the container
+pct exec $CTID -- bash -c ' \
+  export DEBIAN_FRONTEND=noninteractive; \
+  apt-get update && \
+  apt-get install -y ffmpeg python3-pip aria2 ca-certificates git && \
+  pip3 install --upgrade yt-dlp && \
+  apt-get autoremove -y && \
   apt-get clean -y'
-ExecStartPost=/bin/bash -c "echo 'yt-dlp is installed. You can access this container via SSH or the Proxmox console.' > /etc/motd"
-RemainAfterExit=yes
 
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# Enable and start the installation service
-$STD systemctl enable --now install.service
+# --- End Direct Installation Steps ---
 
 description
 
 msg_ok "Completed Successfully!\n"
-echo -e "${CREATING}${GN}${APP} has been successfully installed.${CL}"
+echo -e "${CREATING}${GN}${APP} has been successfully installed in LXC ${CTID}.${CL}"
 echo -e "${INFO}${YW} You can access the container via the Proxmox console or SSH (if configured).${CL}"
