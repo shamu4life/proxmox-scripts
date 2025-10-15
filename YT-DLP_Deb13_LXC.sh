@@ -12,18 +12,11 @@ NC='\033[0m' # No Color
 cat << "EOF"
 
 ${BLUE}
-
-                                                            
-▄▄▄    ▄▄▄ ▄▄▄▄▄▄▄▄            ▄▄▄▄▄     ▄▄        ▄▄▄▄▄▄   
- ██▄  ▄██  ▀▀▀██▀▀▀            ██▀▀▀██   ██        ██▀▀▀▀█▄ 
-  ██▄▄██      ██               ██    ██  ██        ██    ██ 
-   ▀██▀       ██               ██    ██  ██        ██████▀  
-    ██        ██      █████    ██    ██  ██        ██       
-    ██        ██               ██▄▄▄██   ██▄▄▄▄▄▄  ██       
-    ▀▀        ▀▀               ▀▀▀▀▀     ▀▀▀▀▀▀▀▀  ▀▀       
-                                                            
-                                                            
- 
+  __  __ _____ ____   _     _
+ \ \/ /|  ___||  _ \ | |   | |
+  \  / | |_   | | | || |   | |
+  /  \ |  _|  | |_| || |___| |___
+ /_/\_\|_|    |____/ |_____|_____|
 ${NC}
  This script automates the creation of a Proxmox LXC for yt-dlp.
  It prompts for user input, provides defaults, and handles setup automatically.
@@ -59,7 +52,6 @@ if [[ $EUID -ne 0 ]]; then
    msg_error "This script must be run as root."
 fi
 
-# Note: jq is no longer needed for storage detection but kept for bridge detection.
 if ! command -v jq &> /dev/null; then
     msg_info "'jq' is not installed. Attempting to install it now..."
     apt-get update >/dev/null && apt-get install -y jq >/dev/null
@@ -80,34 +72,48 @@ if [ -z "$LATEST_TEMPLATE" ]; then
 fi
 msg_ok "Found latest template: ${GREEN}$LATEST_TEMPLATE${NC}"
 
-# --- Select Storage ---
-msg_info "Detecting suitable storage for LXC containers..."
-# Get storage pools that support 'rootdir' and parse the text output
-mapfile -t STORAGE_POOLS < <(pvesm status --content rootdir | tail -n +2 | awk '{print $1}')
-
-if [ ${#STORAGE_POOLS[@]} -eq 0 ]; then
-    msg_error "No storage pools that support containers (e.g., LVM-Thin, ZFS) were found."
+# --- Select Template Storage ---
+msg_info "Detecting suitable storage for templates..."
+mapfile -t TEMPLATE_STORAGE_POOLS < <(pvesm status --content vztmpl | tail -n +2 | awk '{print $1}')
+if [ ${#TEMPLATE_STORAGE_POOLS[@]} -eq 0 ]; then
+    msg_error "No storage pools that support templates (e.g., 'local') were found."
 fi
 
-echo "Please select a storage pool for the container's disk:"
-select STORAGE in "${STORAGE_POOLS[@]}"; do
-    if [[ -n "$STORAGE" ]]; then
-        msg_ok "You selected '$STORAGE'."
+echo "Please select a storage pool for the template download:"
+select TEMPLATE_STORAGE in "${TEMPLATE_STORAGE_POOLS[@]}"; do
+    if [[ -n "$TEMPLATE_STORAGE" ]]; then
+        msg_ok "You selected '$TEMPLATE_STORAGE' for templates."
         break
     else
         echo -e "${YELLOW}Invalid selection. Please try again.${NC}"
     fi
 done
 
-# Check if the found template is already downloaded to the selected storage
-if ! pveam list $STORAGE | grep -q $LATEST_TEMPLATE; then
-    msg_warn "Template not found on '$STORAGE'. Downloading now..."
-    pveam download $STORAGE $LATEST_TEMPLATE || msg_error "Failed to download template."
+# Check if the found template is already downloaded to the selected template storage
+if ! pveam list $TEMPLATE_STORAGE | grep -q $LATEST_TEMPLATE; then
+    msg_warn "Template not found on '$TEMPLATE_STORAGE'. Downloading now..."
+    pveam download $TEMPLATE_STORAGE $LATEST_TEMPLATE || msg_error "Failed to download template."
     msg_ok "Template downloaded successfully."
 else
-    msg_ok "Latest Debian 12 template is already available on '$STORAGE'."
+    msg_ok "Latest Debian 12 template is already available on '$TEMPLATE_STORAGE'."
 fi
 
+# --- Select Disk Storage ---
+msg_info "Detecting suitable storage for the container disk..."
+mapfile -t DISK_STORAGE_POOLS < <(pvesm status --content rootdir | tail -n +2 | awk '{print $1}')
+if [ ${#DISK_STORAGE_POOLS[@]} -eq 0 ]; then
+    msg_error "No storage pools that support containers (e.g., LVM-Thin, ZFS) were found."
+fi
+
+echo "Please select a storage pool for the container's disk:"
+select DISK_STORAGE in "${DISK_STORAGE_POOLS[@]}"; do
+    if [[ -n "$DISK_STORAGE" ]]; then
+        msg_ok "You selected '$DISK_STORAGE' for the disk."
+        break
+    else
+        echo -e "${YELLOW}Invalid selection. Please try again.${NC}"
+    fi
+done
 
 # --- Gather User Input ---
 msg_info "Please provide the following details for the new container."
@@ -179,12 +185,12 @@ fi
 # --- Create and Configure Container ---
 msg_info "Creating LXC container... This may take a moment."
 
-pct create $CT_ID ${STORAGE}:vztmpl/$LATEST_TEMPLATE \
+pct create $CT_ID ${TEMPLATE_STORAGE}:vztmpl/$LATEST_TEMPLATE \
     --hostname $HOSTNAME \
     $PASSWORD_ARG \
     --cores $CORES \
     --memory $RAM \
-    --rootfs ${STORAGE}:${DISK_SIZE} \
+    --rootfs ${DISK_STORAGE}:${DISK_SIZE} \
     --net0 $NETWORK_CONFIG \
     --onboot 1 \
     --start 1 \
@@ -208,13 +214,13 @@ pct exec $CT_ID -- bash -c "pip install -U yt-dlp" || msg_error "Failed to insta
 echo -e "\n${GREEN}==========================================="
 echo -e " yt-dlp Container Setup Complete! 🎉"
 echo -e "===========================================${NC}\n"
-echo -e "  - ${YELLOW}ID:${NC}       $CT_ID"
-echo -e "  - ${YELLOW}Hostname:${NC} $HOSTNAME"
-echo -e "  - ${YELLOW}Storage:${NC}  $STORAGE"
-echo -e "  - ${YELLOW}IP Addr:${NC}  $IP_INFO"
-echo -e "  - ${YELLOW}Cores:${NC}    $CORES"
-echo -e "  - ${YELLOW}RAM:${NC}      ${RAM}MB"
-echo -e "  - ${YELLOW}Disk:${NC}     ${DISK_SIZE}GB"
+echo -e "  - ${YELLOW}ID:${NC}            $CT_ID"
+echo -e "  - ${YELLOW}Hostname:${NC}      $HOSTNAME"
+echo -e "  - ${YELLOW}Disk Storage:${NC}  $DISK_STORAGE"
+echo -e "  - ${YELLOW}IP Addr:${NC}       $IP_INFO"
+echo -e "  - ${YELLOW}Cores:${NC}         $CORES"
+echo -e "  - ${YELLOW}RAM:${NC}           ${RAM}MB"
+echo -e "  - ${YELLOW}Disk:${NC}          ${DISK_SIZE}GB"
 echo -e "\n"
 
 if [[ -n "$PASSWORD_ARG" ]]; then
