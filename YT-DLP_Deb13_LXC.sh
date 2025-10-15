@@ -1,220 +1,215 @@
 #!/bin/bash
 
-# #############################################################################
-# Interactive script to create a Proxmox LXC container for yt-dlp
-# Base OS: Debian 13 (Trixie)
-# Features:
-#   - Automatically suggests the next available container ID.
-#   - Automatically downloads the template if it is not found.
-#   - Prompts for static IP or DHCP configuration.
-#   - Provides default values for hostname and resources.
-#   - Lets user select the network bridge from a list.
-# #############################################################################
+# This script automates the creation and configuration of a 
+# Proxmox LXC container specifically for running yt-dlp.
 
-# --- STOP ON ERRORS ---
+# --- Exit on any error ---
 set -e
 
-# --- CONFIGURATION ---
-STORAGE="local-lvm"                   # Proxmox storage pool for the container's disk
-TEMPLATE_NAME="debian-13-standard"    # Name of the template to use
-TEMPLATE="local:vztmpl/${TEMPLATE_NAME}_13.0-1_amd64.tar.zst"
+# --- Color Definitions ---
+YLW='\033[1;33m'
+GRN='\033[1;32m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
 
-# Default values for prompts
-DEFAULT_HOSTNAME="yt-dlp"
-DEFAULT_CORES="2"
-DEFAULT_RAM_MB="4096"
-DEFAULT_DISK_GB="10"
-
-# --- SCRIPT LOGIC ---
-
-# Function to check if a command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
+# --- Function to display header ---
+header_info() {
+    clear
+    echo -e "${GRN}############################################################${NC}"
+    echo -e "${GRN}#                                                          #${NC}"
+    echo -e "${GRN}#          Proxmox yt-dlp LXC Container Creator            #${NC}"
+    echo -e "${GRN}#                                                          #${NC}"
+    echo -e "${GRN}############################################################${NC}"
+    echo
 }
 
-# Check for necessary Proxmox commands
-if ! command_exists pct || ! command_exists pveam || ! command_exists pvesh; then
-    echo "❌ This script must be run on a Proxmox VE host."
-    exit 1
+# --- Pre-flight Checks ---
+# Ensure script is run as root
+if [[ $EUID -ne 0 ]]; then
+   echo -e "${RED}This script must be run as root. Aborting.${NC}" 
+   exit 1
 fi
 
-# Check if the Debian 13 template exists, download if it doesn't
-if ! pveam list local | grep -q "$TEMPLATE_NAME"; then
-    echo "🟡 Debian 13 template not found. Attempting to download it now..."
-    echo "⏳ Updating template list..."
-    pveam update
-    echo "📥 Downloading Debian 13 template... (This may take a moment)"
-    pveam download local $TEMPLATE_NAME
-    echo "✅ Template downloaded successfully."
-else
-    echo "✅ Debian 13 template already exists."
+# Check for jq dependency
+if ! command -v jq &> /dev/null; then
+    echo -e "${YLW}jq is not installed. It is required for parsing Proxmox API data.${NC}"
+    read -p "Do you want to install jq now? (y/n): " INSTALL_JQ
+    if [[ "$INSTALL_JQ" =~ ^[Yy]$ ]]; then
+        apt-get update >/dev/null
+        apt-get install -y jq
+    else
+        echo -e "${RED}jq is required to proceed. Aborting.${NC}"
+        exit 1
+    fi
 fi
 
-echo "---"
-echo "Please provide the details for the new LXC container."
-echo "Press [Enter] to accept the default values shown in brackets."
-echo "---"
+# --- Template Management ---
+header_info
+echo -e "${YLW}Checking for Debian 13 (Trixie) template...${NC}"
+TEMPLATE_STORAGE="local"
+TEMPLATE_NAME="debian-13-standard"
+# Find the full template filename
+TEMPLATE_FILE=$(pveam list $TEMPLATE_STORAGE --output-format json | jq -r '.[] | select(.volid | contains("'$TEMPLATE_NAME'")) | .volid' | head -n 1)
 
-# --- USER PROMPTS ---
-
-# Suggest next available CT ID and prompt for it
-NEXT_ID=$(pvesh get /cluster/nextid)
-while true; do
-    read -p "Enter a unique Container ID [${NEXT_ID}]: " CT_ID
-    CT_ID=${CT_ID:-$NEXT_ID} # Assign default if input is empty
-    if ! [[ "$CT_ID" =~ ^[0-9]+$ ]]; then
-        echo "❌ Invalid input. Please enter a number."
-    elif pct status "$CT_ID" >/dev/null 2>&1; then
-        echo "❌ Container ID $CT_ID is already in use."
-        NEXT_ID=$(pvesh get /cluster/nextid) # Get a new suggestion
-    else
-        break
-    fi
-done
-
-# Prompt for Hostname with default
-read -p "Enter a hostname [${DEFAULT_HOSTNAME}]: " HOSTNAME
-HOSTNAME=${HOSTNAME:-$DEFAULT_HOSTNAME}
-
-# Prompt for Password (Mandatory & Secure)
-while true; do
-    read -sp "Enter the root password for the container: " PASSWORD
-    echo
-    read -sp "Confirm the root password: " PASSWORD_CONFIRM
-    echo
-    if [ "$PASSWORD" = "$PASSWORD_CONFIRM" ] && [ -n "$PASSWORD" ]; then
-        break
-    elif [ -z "$PASSWORD" ]; then
-        echo "❌ Password cannot be empty."
-    else
-        echo "❌ Passwords do not match. Please try again."
-    fi
-done
-
-# Prompt for CPU Cores with default and validation
-while true; do
-    read -p "Enter the number of CPU cores [${DEFAULT_CORES}]: " CORES
-    CORES=${CORES:-$DEFAULT_CORES}
-    if [[ "$CORES" =~ ^[1-9][0-9]*$ ]]; then break; else echo "❌ Invalid input."; fi
-done
-
-# Prompt for RAM with default and validation
-while true; do
-    read -p "Enter the amount of RAM in MB [${DEFAULT_RAM_MB}]: " RAM_MB
-    RAM_MB=${RAM_MB:-$DEFAULT_RAM_MB}
-    if [[ "$RAM_MB" =~ ^[1-9][0-9]*$ ]]; then break; else echo "❌ Invalid input."; fi
-done
-
-# Prompt for Disk Size with default and validation
-while true; do
-    read -p "Enter the disk size in GB [${DEFAULT_DISK_GB}]: " DISK_GB
-    DISK_GB=${DISK_GB:-$DEFAULT_DISK_GB}
-    if [[ "$DISK_GB" =~ ^[1-9][0-9]*$ ]]; then break; else echo "❌ Invalid input."; fi
-done
-
-# --- Prompt for Network Bridge Selection ---
-echo "---"
-echo "Available network bridges:"
-mapfile -t bridges < <(ip -br link show type bridge | awk '{print $1}')
-if [ ${#bridges[@]} -eq 0 ]; then
-    echo "❌ No network bridges (vmbr) found. Cannot proceed."
-    exit 1
-fi
-
-select BRIDGE in "${bridges[@]}"; do
-    if [ -n "$BRIDGE" ]; then
-        echo "✅ You selected bridge: $BRIDGE"
-        break
-    else
-        echo "❌ Invalid selection. Please try again."
-    fi
-done
-
-# Prompt for Network Configuration (DHCP or Static)
-NET_CONFIG="ip=dhcp" # Default to DHCP
-IP_ADDRESS=""
-GATEWAY=""
-while true; do
-    read -p "Enter static IP (e.g., 192.168.1.50/24) or leave blank for DHCP: " IP_ADDRESS_INPUT
-    if [ -z "$IP_ADDRESS_INPUT" ]; then
-        echo "✅ Using DHCP for network configuration."
-        break
-    elif [[ "$IP_ADDRESS_INPUT" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]]; then
-        IP_ADDRESS=$IP_ADDRESS_INPUT
-        read -p "Enter the gateway IP address (e.g., 192.168.1.1): " GATEWAY_INPUT
-        if [[ "$GATEWAY_INPUT" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-            GATEWAY=$GATEWAY_INPUT
-            NET_CONFIG="ip=${IP_ADDRESS},gw=${GATEWAY}"
-            break
-        else
-            echo "❌ Invalid gateway format. Please use x.x.x.x format."
+if [ -z "$TEMPLATE_FILE" ]; then
+    echo "Debian 13 template not found."
+    read -p "Do you want to download it now? (y/n): " DOWNLOAD_TEMPLATE
+    if [[ "$DOWNLOAD_TEMPLATE" =~ ^[Yy]$ ]]; then
+        echo "Updating template list..."
+        pveam update
+        echo "Downloading Debian 13 template..."
+        pveam download $TEMPLATE_STORAGE $TEMPLATE_NAME
+        # Re-check for the template file name
+        TEMPLATE_FILE=$(pveam list $TEMPLATE_STORAGE --output-format json | jq -r '.[] | select(.volid | contains("'$TEMPLATE_NAME'")) | .volid' | head -n 1)
+        if [ -z "$TEMPLATE_FILE" ]; then
+            echo -e "${RED}Failed to download the template. Please check storage and network. Aborting.${NC}"
+            exit 1
         fi
     else
-        echo "❌ Invalid format. Use CIDR notation (e.g., 192.168.1.50/24) or leave blank."
+        echo -e "${RED}Template is required to proceed. Aborting.${NC}"
+        exit 1
+    fi
+else
+    echo -e "${GRN}Debian 13 template found: $TEMPLATE_FILE${NC}"
+fi
+sleep 2
+
+# --- Gather Container Information ---
+header_info
+echo -e "${YLW}Please provide the details for the new container.${NC}"
+echo
+
+# Get the next available CT ID from Proxmox
+NEXT_ID=$(pvesh get /cluster/nextid)
+
+# Prompt for user input with defaults
+read -p "Enter Container ID [$NEXT_ID]: " CT_ID
+CT_ID=${CT_ID:-$NEXT_ID}
+
+read -p "Enter Hostname [yt-dlp]: " HOSTNAME
+HOSTNAME=${HOSTNAME:-yt-dlp}
+
+while true; do
+    read -s -p "Enter Root Password: " PASSWORD
+    echo
+    read -s -p "Confirm Root Password: " PASSWORD2
+    echo
+    [ "$PASSWORD" = "$PASSWORD2" ] && ! [ -z "$PASSWORD" ] && break
+    echo -e "${RED}Passwords do not match or are empty. Please try again.${NC}"
+done
+
+read -p "Enter CPU Cores [2]: " CORES
+CORES=${CORES:-2}
+
+read -p "Enter RAM in MB [4096]: " RAM
+RAM=${RAM:-4096}
+
+read -p "Enter Disk Size in GB [10]: " DISK_SIZE
+DISK_SIZE=${DISK_SIZE:-10}
+
+# --- Storage Selection ---
+header_info
+echo -e "${YLW}Please select a storage pool for the container's root disk.${NC}"
+mapfile -t storage_options < <(pvesh get /storage --output-format json | jq -r '.[] | select(.content | contains("rootdir") or contains("images")) | .storage')
+PS3="Select storage: "
+select STORAGE in "${storage_options[@]}"; do
+    if [[ -n $STORAGE ]]; then
+        echo -e "${GRN}Selected storage: $STORAGE${NC}"
+        break
+    else
+        echo -e "${RED}Invalid selection. Please try again.${NC}"
     fi
 done
-echo "---"
+sleep 1
 
-# --- CONFIRMATION ---
-echo "⚙️  Review the configuration:"
-echo "--------------------------------"
-echo "Container ID:   $CT_ID"
-echo "Hostname:       $HOSTNAME"
-echo "CPU Cores:      $CORES"
-echo "RAM:            $RAM_MB MB"
-echo "Disk Size:      $DISK_GB GB"
-echo "Network Bridge: $BRIDGE"
-if [ -n "$IP_ADDRESS" ]; then
-    echo "IP Address:     $IP_ADDRESS (Static)"
-    echo "Gateway:        $GATEWAY"
+# --- Network Configuration ---
+header_info
+echo -e "${YLW}Please select a network bridge.${NC}"
+mapfile -t bridge_options < <(pvesh get /nodes/$(hostname)/network --type bridge --output-format json | jq -r '.[].iface')
+PS3="Select bridge: "
+select BRIDGE in "${bridge_options[@]}"; do
+    if [[ -n $BRIDGE ]]; then
+        echo -e "${GRN}Selected bridge: $BRIDGE${NC}"
+        break
+    else
+        echo -e "${RED}Invalid selection. Please try again.${NC}"
+    fi
+done
+echo
+
+read -p "Enter IP address with CIDR (e.g., 192.168.1.50/24) or leave blank for DHCP: " IP_CIDR
+if [ -z "$IP_CIDR" ]; then
+    NETWORK_OPTS="--net0 name=eth0,bridge=$BRIDGE,ip=dhcp"
+    IP_INFO="DHCP"
 else
-    echo "IP Address:     DHCP"
+    read -p "Enter Gateway IP: " GATEWAY
+    if [ -z "$GATEWAY" ]; then
+        echo -e "${RED}Gateway is required for a static IP. Aborting.${NC}"
+        exit 1
+    fi
+    NETWORK_OPTS="--net0 name=eth0,bridge=$BRIDGE,ip=$IP_CIDR,gw=$GATEWAY"
+    IP_INFO="$IP_CIDR (gw: $GATEWAY)"
 fi
-echo "Storage Pool:   $STORAGE"
-echo "Base OS:        Debian 13 (Trixie)"
-echo "--------------------------------"
+# Use host's DNS settings
+HOST_DNS=$(grep "nameserver" /etc/resolv.conf | awk '{print $2}' | head -n 1)
 
-read -p "Proceed with creation? (y/N): " CONFIRM
-if [[ ! "$CONFIRM" =~ ^[yY](es)*$ ]]; then
-    echo "🚫 Creation cancelled."
+# --- Create & Configure ---
+header_info
+echo -e "${YLW}Creating container...${NC}"
+
+pct create $CT_ID "$TEMPLATE_FILE" \
+    --hostname "$HOSTNAME" \
+    --password "$PASSWORD" \
+    --cores "$CORES" \
+    --memory "$RAM" \
+    --rootfs "$STORAGE:$DISK_SIZE" \
+    --onboot 1 \
+    --nameserver "$HOST_DNS" \
+    $NETWORK_OPTS
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Failed to create container. Please check settings and try again.${NC}"
     exit 1
 fi
 
-# --- CONTAINER CREATION ---
-echo "🔥 Creating LXC container $CT_ID ($HOSTNAME)..."
+echo -e "${GRN}Container created successfully. Starting...${NC}"
+pct start $CT_ID
 
-pct create $CT_ID $TEMPLATE \
-    --hostname $HOSTNAME \
-    --password $PASSWORD \
-    --cores $CORES \
-    --memory $RAM_MB \
-    --rootfs $STORAGE:$DISK_GB \
-    --net0 name=eth0,bridge=$BRIDGE,$NET_CONFIG \
-    --onboot 1 \
-    --start 1
+echo -e "${YLW}Waiting for container network to initialize...${NC}"
+# Wait up to 2 minutes for an IP address
+for i in {1..120}; do
+    CT_IP=$(pct exec $CT_ID -- ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+    if [ ! -z "$CT_IP" ]; then
+        echo -e "${GRN}Container IP found: $CT_IP${NC}"
+        break
+    fi
+    sleep 1
+done
 
-echo "⏳ Waiting for container to boot and get a network connection..."
-sleep 15
-
-echo "🚀 Container created. Now configuring software..."
-pct exec $CT_ID -- bash -c "apt-get update && apt-get upgrade -y"
-echo "✅ System updated."
-pct exec $CT_ID -- bash -c "apt-get install -y ffmpeg python3-pip"
-echo "✅ Dependencies installed."
-pct exec $CT_ID -- bash -c "pip install yt-dlp"
-echo "✅ yt-dlp installed."
-
-# Get IP address for the final message
-if [ -n "$GATEWAY" ]; then
-    CT_IP="${IP_ADDRESS%/*}" # For static IP, remove CIDR from address
-else
-    CT_IP=$(pct exec $CT_ID -- ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}') # For DHCP, query it
+if [ -z "$CT_IP" ]; then
+    echo -e "${RED}Error: Could not get container IP after 120 seconds. Aborting post-install.${NC}"
+    exit 1
 fi
 
-echo ""
-echo "🎉 --- Success! --- 🎉"
-echo "LXC Container '$HOSTNAME' (ID: $CT_ID) is ready."
-echo "IP Address: $CT_IP"
-echo "Access with: ssh root@$CT_IP"
+echo -e "${YLW}Updating container and installing software (yt-dlp, ffmpeg, aria2)...${NC}"
+pct exec $CT_ID -- apt-get update
+pct exec $CT_ID -- apt-get upgrade -y
+pct exec $CT_ID -- apt-get install -y yt-dlp ffmpeg python3-pip aria2
 
-exit 0
+# --- Summary ---
+header_info
+echo -e "${GRN}🎉 Setup Complete! 🎉${NC}"
+echo
+echo "Container details:"
+echo "------------------------------------"
+echo -e "CT ID:      ${YLW}$CT_ID${NC}"
+echo -e "Hostname:   ${YLW}$HOSTNAME${NC}"
+echo -e "IP Address: ${YLW}$CT_IP${NC}"
+echo -e "Cores:      ${YLW}$CORES${NC}"
+echo -e "RAM:        ${YLW}${RAM} MB${NC}"
+echo -e "Disk Size:  ${YLW}${DISK_SIZE} GB${NC}"
+echo -e "Bridge:     ${YLW}$BRIDGE${NC}"
+echo "------------------------------------"
+echo
+echo "You can access the container with: ${GRN}pct enter $CT_ID${NC}"
+echo
