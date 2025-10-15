@@ -4,10 +4,6 @@
 # Author: tteck (tteckster)
 # License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
 # Source: https://github.com/yt-dlp/yt-dlp
-#
-# DO NOT EDIT THIS SCRIPT
-# This script is maintained by community-scripts
-# https://github.com/community-scripts/ProxmoxVE/
 
 source <(curl -sSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/misc/build.func)
 
@@ -20,7 +16,9 @@ var_disk="${var_disk:-10}"
 var_os="${var_os:-debian}"
 var_version="${var_version:-12}"
 var_unprivileged="${var_unprivileged:-1}"
-var_install="false" # Prevent the helper script from trying to run a remote installer
+# This variable is set to an empty command (a colon ':') which does nothing and exits successfully.
+# This will safely override the problematic final line in the build_container function.
+var_install_override=':'
 
 # Run setup
 header_info
@@ -28,25 +26,31 @@ variables
 color
 catch_errors
 
+# This line is the key fix. It re-assigns var_install after the 'variables' function has run.
+# The original 'lxc-attach' line will now effectively run 'bash -c ":"' which is harmless.
+var_install="$var_install_override"
+
 start
 build_container
 
-# Get the container ID
+# Get the container ID from Proxmox
 CTID=$(pvesh get /cluster/resources --type vm --output-format json | \
   jq -r --arg NAME "$var_hostname" '.[] | select(.name==$NAME) | .vmid')
 
 # --- Direct Installation Steps ---
-msg_info "Starting yt-dlp installation..."
+msg_info "Installing yt-dlp and dependencies in LXC ${CTID}..."
 
-# Run all installation commands inside the container
+# Execute the installation commands directly inside the newly created container.
+# Using 'pct exec' is the standard Proxmox way to run commands in a container from the host.
 pct exec $CTID -- bash -c ' \
   export DEBIAN_FRONTEND=noninteractive; \
   apt-get update && \
   apt-get install -y ffmpeg python3-pip aria2 ca-certificates git && \
   pip3 install --upgrade yt-dlp && \
   apt-get autoremove -y && \
-  apt-get clean -y'
+  apt-get clean -y' || exit 1
 
+msg_ok "Installation complete."
 # --- End Direct Installation Steps ---
 
 description
