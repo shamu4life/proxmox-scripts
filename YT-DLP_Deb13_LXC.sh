@@ -2,7 +2,7 @@
 
 # This script automates the creation and configuration of a 
 # Proxmox LXC container specifically for running yt-dlp.
-# Version 2.0 - Improved compatibility for older Proxmox VE versions.
+# Version 3.0 - Improved storage detection for maximum compatibility.
 
 # --- Exit on any error ---
 set -e
@@ -16,14 +16,11 @@ NC='\033[0m' # No Color
 # --- Function to display header ---
 header_info() {
     clear
-    echo -e "${GRN}# █████ █████ ███████████            ██████████   █████       ███████████ #${NC}"
-    echo -e "${GRN}#░░███ ░░███ ░█░░░███░░░█           ░░███░░░░███ ░░███       ░░███░░░░░███#${NC}"
-    echo -e "${GRN}# ░░███ ███  ░   ░███  ░             ░███   ░░███ ░███        ░███    ░███#${NC}"
-    echo -e "${GRN}#  ░░█████       ░███     ██████████ ░███    ░███ ░███        ░██████████ #${NC}"
-    echo -e "${GRN}#   ░░███        ░███    ░░░░░░░░░░  ░███    ░███ ░███        ░███░░░░░░  #${NC}"
-    echo -e "${GRN}#    ░███        ░███                ░███    ███  ░███      █ ░███        #${NC}"
-    echo -e "${GRN}#    █████       █████               ██████████   ███████████ █████       #${NC}"
-    echo -e "${GRN}#   ░░░░░       ░░░░░               ░░░░░░░░░░   ░░░░░░░░░░░ ░░░░░        #${NC}"
+    echo -e "${GRN}############################################################${NC}"
+    echo -e "${GRN}#                                                          #${NC}"
+    echo -e "${GRN}#          Proxmox yt-dlp LXC Container Creator            #${NC}"
+    echo -e "${GRN}#                                                          #${NC}"
+    echo -e "${GRN}############################################################${NC}"
     echo
 }
 
@@ -101,8 +98,14 @@ DISK_SIZE=${DISK_SIZE:-10}
 # --- Storage Selection ---
 header_info
 echo -e "${YLW}Please select a storage pool for the container's root disk.${NC}"
-# Use awk to parse text output for wider compatibility
-mapfile -t storage_options < <(pvesh get /storage | awk 'NR>1 && ($4 ~ /rootdir/ || $4 ~ /images/) {print $1}')
+# Use a more robust grep/awk method to find storage that supports containers
+mapfile -t storage_options < <(pvesh get /storage | grep -E 'rootdir|images' | awk '{print $1}')
+if [ ${#storage_options[@]} -eq 0 ]; then
+    echo -e "${RED}Error: No storage pools found that support container images or root disks.${NC}"
+    echo "Please ensure you have a storage pool with 'rootdir' or 'images' in its content type."
+    exit 1
+fi
+
 PS3="Select storage: "
 select STORAGE in "${storage_options[@]}"; do
     if [[ -n $STORAGE ]]; then
