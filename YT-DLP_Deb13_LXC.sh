@@ -12,17 +12,11 @@ NC='\033[0m' # No Color
 cat << "EOF"
 
 ${BLUE}
- █████ █████ ███████████            ██████████   █████       ███████████ 
-▒▒███ ▒▒███ ▒█▒▒▒███▒▒▒█           ▒▒███▒▒▒▒███ ▒▒███       ▒▒███▒▒▒▒▒███
- ▒▒███ ███  ▒   ▒███  ▒             ▒███   ▒▒███ ▒███        ▒███    ▒███
-  ▒▒█████       ▒███     ██████████ ▒███    ▒███ ▒███        ▒██████████ 
-   ▒▒███        ▒███    ▒▒▒▒▒▒▒▒▒▒  ▒███    ▒███ ▒███        ▒███▒▒▒▒▒▒  
-    ▒███        ▒███                ▒███    ███  ▒███      █ ▒███        
-    █████       █████               ██████████   ███████████ █████       
-   ▒▒▒▒▒       ▒▒▒▒▒               ▒▒▒▒▒▒▒▒▒▒   ▒▒▒▒▒▒▒▒▒▒▒ ▒▒▒▒▒        
-                                                                         
-                                                                         
-                                                                         
+  __  __ _____ ____   _     _
+ \ \/ /|  ___||  _ \ | |   | |
+  \  / | |_   | | | || |   | |
+  /  \ |  _|  | |_| || |___| |___
+ /_/\_\|_|    |____/ |_____|_____|
 ${NC}
  This script automates the creation of a Proxmox LXC for yt-dlp.
  It prompts for user input, provides defaults, and handles setup automatically.
@@ -95,7 +89,6 @@ select TEMPLATE_STORAGE in "${TEMPLATE_STORAGE_POOLS[@]}"; do
     fi
 done
 
-# Check if the found template is already downloaded to the selected template storage
 if ! pveam list $TEMPLATE_STORAGE | grep -q $LATEST_TEMPLATE; then
     msg_warn "Template not found on '$TEMPLATE_STORAGE'. Downloading now..."
     pveam download $TEMPLATE_STORAGE $LATEST_TEMPLATE || msg_error "Failed to download template."
@@ -203,18 +196,18 @@ pct create $CT_ID ${TEMPLATE_STORAGE}:vztmpl/$LATEST_TEMPLATE \
     || msg_error "Failed to create LXC container."
 
 msg_ok "Container $CT_ID created successfully. Starting configuration..."
-
 msg_info "Waiting for container to boot and acquire network..."
 sleep 10
 
-msg_info "Updating package lists and upgrading system..."
-pct exec $CT_ID -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get update && apt-get upgrade -y" || msg_warn "Failed to update container packages."
+# --- Run all configuration steps in a single block ---
+msg_info "Installing dependencies and configuring the container..."
+COMMANDS="DEBIAN_FRONTEND=noninteractive apt-get update && apt-get upgrade -y; \
+apt-get install -y python3-pip ffmpeg pipx locales; \
+echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen && locale-gen; \
+pipx install yt-dlp; \
+pipx ensurepath"
 
-msg_info "Installing dependencies: python3-pip and ffmpeg..."
-pct exec $CT_ID -- bash -c "DEBIAN_FRONTEND=noninteractive apt-get install -y python3-pip ffmpeg" || msg_error "Failed to install dependencies."
-
-msg_info "Installing/Updating yt-dlp..."
-pct exec $CT_ID -- bash -c "pip install -U yt-dlp" || msg_error "Failed to install yt-dlp."
+pct exec $CT_ID -- bash -c "$COMMANDS" || msg_error "Failed during container configuration."
 
 # --- Final Summary ---
 echo -e "\n${GREEN}==========================================="
