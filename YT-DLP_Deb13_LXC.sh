@@ -1,19 +1,33 @@
 #!/bin/bash
 
-# This script automates the creation of a Proxmox LXC for yt-dlp.
-# It prompts for user input, provides defaults, and handles setup automatically.
-
 # --- Global Variables & Colors ---
-TEMPLATE_STORAGE="local"
-TEMPLATE_NAME="debian-13-standard"
-TEMPLATE_FILE="${TEMPLATE_NAME}_13.0-1_amd64.tar.zst"
-
 # Color codes for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
+
+# --- ASCII Art Header ---
+# This will be displayed to the user when the script is run.
+cat << "EOF"
+
+${BLUE}
+  __  __ _____ ____   _     _
+ \ \/ /|  ___||  _ \ | |   | |
+  \  / | |_   | | | || |   | |
+  /  \ |  _|  | |_| || |___| |___
+ /_/\_\|_|    |____/ |_____|_____|
+${NC}
+ This script automates the creation of a Proxmox LXC for yt-dlp.
+ It prompts for user input, provides defaults, and handles setup automatically.
+
+EOF
+
+# --- Script Variables ---
+TEMPLATE_STORAGE="local"
+TEMPLATE_NAME="debian-13-standard"
+TEMPLATE_FILE="${TEMPLATE_NAME}_13.0-1_amd64.tar.zst"
 
 # --- Helper Functions ---
 function msg_info() {
