@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Description: This script automates the creation and configuration of a
-#              dedicated Proxmox LXC container for running yt-dlp. (v3)
+#              dedicated Proxmox LXC container for running yt-dlp. (v4)
 #
 
 # --- Function to handle errors ---
@@ -27,14 +27,14 @@ clear
 
 # --- ASCII Art Header ---
 cat << "EOF"
- __     _________     _____  _      _____  
- \ \   / /__   __|   |  __ \| |    |  __ \ 
-  \ \_/ /   | |______| |  | | |    | |__) |
-   \   /    | |______| |  | | |    |  ___/ 
-    | |     | |      | |__| | |____| |     
-    |_|     |_|      |_____/|______|_|     
-                                           
-            
+__  ________    ____  __    ____ 
+\ \/ /_  __/   / __ \/ /   / __ \
+ \  / / /_____/ / / / /   / /_/ /
+ / / / /_____/ /_/ / /___/ ____/ 
+/_/ /_/     /_____/_____/_/      
+                                 
+
+
 EOF
 
 echo -e "${GREEN}--- Proxmox yt-dlp LXC Creation Script ---${NC}"
@@ -48,12 +48,38 @@ SUGGESTED_ID=$(pvesh get /cluster/nextid)
 echo "✔️ Suggested CT ID: ${SUGGESTED_ID}"
 
 # Get storage locations for templates and images separately
-mapfile -t TEMPLATE_STORAGE_OPTIONS < <(pvesm status | awk 'NR>1 && $3 ~ /vztmpl/ {print $1}')
-mapfile -t DISK_STORAGE_OPTIONS < <(pvesm status | awk 'NR>1 && $3 ~ /images/ {print $1}')
+mapfile -t TEMPLATE_STORAGE_OPTIONS < <(pvesm status --content vztmpl | awk 'NR>1 {print $1}')
+mapfile -t DISK_STORAGE_OPTIONS < <(pvesm status --content images | awk 'NR>1 {print $1}')
 
+
+# --- NEW: Self-Correction Logic ---
 if [ ${#TEMPLATE_STORAGE_OPTIONS[@]} -eq 0 ]; then
-    handle_error "No storage found that supports 'vztmpl' (templates). Please check your storage configuration."
+    echo -e "\n${RED}Configuration Issue Detected!${NC}"
+    echo "No storage is configured to hold 'Container templates' (vztmpl)."
+    
+    # Check if a 'local' storage exists to offer a solution
+    if pvesm status | awk 'NR>1 {print $1}' | grep -q "^local$"; then
+        echo -e "\nYour '${YELLOW}local${NC}' storage is a good candidate for this."
+        echo "To fix this, please run the following command on your Proxmox host:"
+        
+        # Get existing content and suggest the new command
+        EXISTING_CONTENT=$(pvesm status --storage local --output-format json-pretty | jq -r '.content')
+        if [[ -z "$EXISTING_CONTENT" || "$EXISTING_CONTENT" == "null" ]]; then
+            NEW_CONTENT="vztmpl"
+        else
+            NEW_CONTENT="${EXISTING_CONTENT},vztmpl"
+        fi
+        
+        echo -e "\n  ${GREEN}pvesm set local --content $NEW_CONTENT${NC}\n"
+        echo "After running the command, please re-run this script."
+    else
+        echo "Please enable the 'vztmpl' content type on one of your storage pools in the Proxmox UI."
+    fi
+    exit 1 # Exit gracefully after providing the solution
 fi
+# --- END of Self-Correction Logic ---
+
+
 if [ ${#DISK_STORAGE_OPTIONS[@]} -eq 0 ]; then
     handle_error "No storage found that supports 'images' (container disks). Please check your storage configuration."
 fi
