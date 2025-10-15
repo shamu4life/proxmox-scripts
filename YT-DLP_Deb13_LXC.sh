@@ -2,6 +2,7 @@
 
 # This script automates the creation and configuration of a 
 # Proxmox LXC container specifically for running yt-dlp.
+# Version 2.0 - Improved compatibility for older Proxmox VE versions.
 
 # --- Exit on any error ---
 set -e
@@ -30,26 +31,13 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# Check for jq dependency
-if ! command -v jq &> /dev/null; then
-    echo -e "${YLW}jq is not installed. It is required for parsing Proxmox API data.${NC}"
-    read -p "Do you want to install jq now? (y/n): " INSTALL_JQ
-    if [[ "$INSTALL_JQ" =~ ^[Yy]$ ]]; then
-        apt-get update >/dev/null
-        apt-get install -y jq
-    else
-        echo -e "${RED}jq is required to proceed. Aborting.${NC}"
-        exit 1
-    fi
-fi
-
 # --- Template Management ---
 header_info
 echo -e "${YLW}Checking for Debian 13 (Trixie) template...${NC}"
 TEMPLATE_STORAGE="local"
 TEMPLATE_NAME="debian-13-standard"
-# Find the full template filename
-TEMPLATE_FILE=$(pveam list $TEMPLATE_STORAGE --output-format json | jq -r '.[] | select(.volid | contains("'$TEMPLATE_NAME'")) | .volid' | head -n 1)
+# Find the full template filename using grep/awk for wider compatibility
+TEMPLATE_FILE=$(pveam list $TEMPLATE_STORAGE | grep "$TEMPLATE_NAME" | awk '{print $1}' | head -n 1)
 
 if [ -z "$TEMPLATE_FILE" ]; then
     echo "Debian 13 template not found."
@@ -60,7 +48,7 @@ if [ -z "$TEMPLATE_FILE" ]; then
         echo "Downloading Debian 13 template..."
         pveam download $TEMPLATE_STORAGE $TEMPLATE_NAME
         # Re-check for the template file name
-        TEMPLATE_FILE=$(pveam list $TEMPLATE_STORAGE --output-format json | jq -r '.[] | select(.volid | contains("'$TEMPLATE_NAME'")) | .volid' | head -n 1)
+        TEMPLATE_FILE=$(pveam list $TEMPLATE_STORAGE | grep "$TEMPLATE_NAME" | awk '{print $1}' | head -n 1)
         if [ -z "$TEMPLATE_FILE" ]; then
             echo -e "${RED}Failed to download the template. Please check storage and network. Aborting.${NC}"
             exit 1
@@ -110,7 +98,8 @@ DISK_SIZE=${DISK_SIZE:-10}
 # --- Storage Selection ---
 header_info
 echo -e "${YLW}Please select a storage pool for the container's root disk.${NC}"
-mapfile -t storage_options < <(pvesh get /storage --output-format json | jq -r '.[] | select(.content | contains("rootdir") or contains("images")) | .storage')
+# Use awk to parse text output for wider compatibility
+mapfile -t storage_options < <(pvesh get /storage | awk 'NR>1 && ($4 ~ /rootdir/ || $4 ~ /images/) {print $1}')
 PS3="Select storage: "
 select STORAGE in "${storage_options[@]}"; do
     if [[ -n $STORAGE ]]; then
@@ -125,7 +114,8 @@ sleep 1
 # --- Network Configuration ---
 header_info
 echo -e "${YLW}Please select a network bridge.${NC}"
-mapfile -t bridge_options < <(pvesh get /nodes/$(hostname)/network --type bridge --output-format json | jq -r '.[].iface')
+# Use awk to parse text output for wider compatibility
+mapfile -t bridge_options < <(pvesh get /nodes/$(hostname)/network --type bridge | awk 'NR>1 {print $2}')
 PS3="Select bridge: "
 select BRIDGE in "${bridge_options[@]}"; do
     if [[ -n $BRIDGE ]]; then
