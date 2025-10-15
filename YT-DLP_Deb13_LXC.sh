@@ -12,11 +12,18 @@ NC='\033[0m' # No Color
 cat << "EOF"
 
 ${BLUE}
-  __  __ _____ ____   _     _
- \ \/ /|  ___||  _ \ | |   | |
-  \  / | |_   | | | || |   | |
-  /  \ |  _|  | |_| || |___| |___
- /_/\_\|_|    |____/ |_____|_____|
+
+                                                            
+▄▄▄    ▄▄▄ ▄▄▄▄▄▄▄▄            ▄▄▄▄▄     ▄▄        ▄▄▄▄▄▄   
+ ██▄  ▄██  ▀▀▀██▀▀▀            ██▀▀▀██   ██        ██▀▀▀▀█▄ 
+  ██▄▄██      ██               ██    ██  ██        ██    ██ 
+   ▀██▀       ██               ██    ██  ██        ██████▀  
+    ██        ██      █████    ██    ██  ██        ██       
+    ██        ██               ██▄▄▄██   ██▄▄▄▄▄▄  ██       
+    ▀▀        ▀▀               ▀▀▀▀▀     ▀▀▀▀▀▀▀▀  ▀▀       
+                                                            
+                                                            
+ 
 ${NC}
  This script automates the creation of a Proxmox LXC for yt-dlp.
  It prompts for user input, provides defaults, and handles setup automatically.
@@ -52,7 +59,7 @@ if [[ $EUID -ne 0 ]]; then
    msg_error "This script must be run as root."
 fi
 
-# Check for jq dependency
+# Note: jq is no longer needed for storage detection but kept for bridge detection.
 if ! command -v jq &> /dev/null; then
     msg_info "'jq' is not installed. Attempting to install it now..."
     apt-get update >/dev/null && apt-get install -y jq >/dev/null
@@ -75,8 +82,9 @@ msg_ok "Found latest template: ${GREEN}$LATEST_TEMPLATE${NC}"
 
 # --- Select Storage ---
 msg_info "Detecting suitable storage for LXC containers..."
-# Get storage pools that support 'rootdir' (LXC root filesystems)
-mapfile -t STORAGE_POOLS < <(pvesm status --content rootdir --output-format json | jq -r '.[].storage')
+# Get storage pools that support 'rootdir' and parse the text output
+mapfile -t STORAGE_POOLS < <(pvesm status --content rootdir | tail -n +2 | awk '{print $1}')
+
 if [ ${#STORAGE_POOLS[@]} -eq 0 ]; then
     msg_error "No storage pools that support containers (e.g., LVM-Thin, ZFS) were found."
 fi
