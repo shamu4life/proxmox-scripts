@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Description: This script automates the creation and configuration of a
-#              dedicated Proxmox LXC container for running yt-dlp.
+#              dedicated Proxmox LXC container for running yt-dlp. (v2)
 #
 
 # --- Global Variables & Colors ---
@@ -30,14 +30,19 @@ echo "This script will guide you through creating a new Debian 13 container."
 # --- Gather System Information ---
 echo -e "\n${YELLOW}Gathering system information...${NC}"
 
-# Get the next available container ID from Proxmox
+# Get the next available container ID
 SUGGESTED_ID=$(pvesh get /cluster/nextid)
 echo "✔️ Suggested CT ID: ${SUGGESTED_ID}"
 
-# Get storage locations that can hold both container images and templates
-mapfile -t STORAGE_OPTIONS < <(pvesm status | awk 'NR>1 && $3 ~ /vztmpl/ && $3 ~ /images/ {print $1}')
-if [ ${#STORAGE_OPTIONS[@]} -eq 0 ]; then
-    handle_error "No storage found that supports both 'vztmpl' (templates) and 'images' (container disks)."
+# Get storage locations for templates and images separately
+mapfile -t TEMPLATE_STORAGE_OPTIONS < <(pvesm status | awk 'NR>1 && $3 ~ /vztmpl/ {print $1}')
+mapfile -t DISK_STORAGE_OPTIONS < <(pvesm status | awk 'NR>1 && $3 ~ /images/ {print $1}')
+
+if [ ${#TEMPLATE_STORAGE_OPTIONS[@]} -eq 0 ]; then
+    handle_error "No storage found that supports 'vztmpl' (templates). Please check your storage configuration."
+fi
+if [ ${#DISK_STORAGE_OPTIONS[@]} -eq 0 ]; then
+    handle_error "No storage found that supports 'images' (container disks). Please check your storage configuration."
 fi
 echo "✔️ Found compatible storage locations."
 
@@ -58,7 +63,6 @@ CT_ID=${CT_ID:-$SUGGESTED_ID}
 read -p "Enter Hostname [yt-dlp]: " HOSTNAME
 HOSTNAME=${HOSTNAME:-yt-dlp}
 
-# Loop for password confirmation
 while true; do
     read -s -p "Enter Root Password: " ROOT_PASSWORD
     echo
@@ -73,38 +77,31 @@ done
 
 read -p "Enter CPU Cores [2]: " CORES
 CORES=${CORES:-2}
-
 read -p "Enter RAM in MB [4096]: " RAM
 RAM=${RAM:-4096}
-
 read -p "Enter Disk Size in GB [10]: " DISK_SIZE
 DISK_SIZE=${DISK_SIZE:-10}
 
-# Storage Selection Menu
-echo -e "\nPlease select a storage location for the container disk and template:"
-select STORAGE in "${STORAGE_OPTIONS[@]}"; do
-    if [[ -n "$STORAGE" ]]; then
-        break
-    else
-        echo "Invalid selection. Please try again."
-    fi
+# Storage Selection Menus
+echo -e "\nPlease select a storage location for the TEMPLATE:"
+select STORAGE_TMPL in "${TEMPLATE_STORAGE_OPTIONS[@]}"; do
+    [[ -n "$STORAGE_TMPL" ]] && break || echo "Invalid selection."
 done
 
-# Network Bridge Selection Menu
+echo -e "\nPlease select a storage location for the CONTAINER DISK:"
+select STORAGE_DISK in "${DISK_STORAGE_OPTIONS[@]}"; do
+    [[ -n "$STORAGE_DISK" ]] && break || echo "Invalid selection."
+done
+
 echo -e "\nPlease select a network bridge:"
 select BRIDGE in "${BRIDGE_OPTIONS[@]}"; do
-    if [[ -n "$BRIDGE" ]]; then
-        break
-    else
-        echo "Invalid selection. Please try again."
-    fi
+    [[ -n "$BRIDGE" ]] && break || echo "Invalid selection."
 done
 
 read -p "Enter IP Address (e.g., 192.168.1.50/24) or leave blank for DHCP: " IP_ADDRESS
 if [ -z "$IP_ADDRESS" ]; then
     IP_CONFIG="dhcp"
 else
-    # Basic validation for CIDR format
     if ! [[ $IP_ADDRESS =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]{1,2}$ ]]; then
         handle_error "Invalid static IP format. Please use CIDR notation (e.g., 192.168.1.50/24)."
     fi
@@ -118,7 +115,8 @@ echo "  Hostname:       $HOSTNAME"
 echo "  CPU Cores:      $CORES"
 echo "  RAM:            ${RAM}MB"
 echo "  Disk Size:      ${DISK_SIZE}GB"
-echo "  Storage:        $STORAGE"
+echo "  Template Storage: $STORAGE_TMPL"
+echo "  Disk Storage:     $STORAGE_DISK"
 echo "  Bridge:         $BRIDGE"
 echo "  IP Config:      $IP_CONFIG"
 echo -e "${YELLOW}----------------------------${NC}\n"
@@ -130,37 +128,36 @@ if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
 fi
 
 # --- Step 1: Template Management ---
-echo -e "\n${GREEN}Checking for Debian 13 template ($TEMPLATE)...${NC}"
-if ! pvesm list "$STORAGE" --vztmpl | grep -q "$TEMPLATE"; then
+echo -e "\n${GREEN}Checking for Debian 13 template ($TEMPLATE) on '$STORAGE_TMPL'...${NC}"
+if ! pvesm list "$STORAGE_TMPL" --vztmpl | grep -q "$TEMPLATE"; then
     echo "Template not found. Attempting to download..."
     pveam update || handle_error "Failed to update PVE template list."
-    pveam download "$STORAGE" "$TEMPLATE" || handle_error "Failed to download template."
+    pveam download "$STORAGE_TMPL" "$TEMPLATE" || handle_error "Failed to download template."
     echo "Template downloaded successfully."
 else
-    echo "Template already exists on storage '$STORAGE'."
+    echo "Template already exists on storage '$STORAGE_TMPL'."
 fi
 
 # --- Step 2: Create Container ---
 echo -e "\n${GREEN}Creating LXC container...${NC}"
 IP_SETTING="ip=${IP_CONFIG}"
 
-pct create "$CT_ID" "$STORAGE:vztmpl/$TEMPLATE" \
+pct create "$CT_ID" "$STORAGE_TMPL:vztmpl/$TEMPLATE" \
     --hostname "$HOSTNAME" \
     --password "$ROOT_PASSWORD" \
     --cores "$CORES" \
     --memory "$RAM" \
-    --rootfs "$STORAGE:$DISK_SIZE" \
+    --rootfs "$STORAGE_DISK:$DISK_SIZE" \
     --net0 name=eth0,bridge="$BRIDGE","$IP_SETTING" \
     --onboot 1 \
     --start 1 || handle_error "Failed to create the LXC container with 'pct create'."
 
-echo "Container created. Waiting a moment for it to boot and establish network..."
-sleep 15 # A generous delay to allow the container to boot and get an IP
+echo "Container created. Waiting for it to boot and establish network..."
+sleep 15
 
 # --- Step 3: Post-Install Configuration ---
 echo -e "\n${GREEN}Updating container and installing yt-dlp...${NC}"
-
-# Retry loop in case network isn't immediately available
+INSTALL_SUCCESS=false
 for i in {1..5}; do
     if pct exec "$CT_ID" -- ping -c 1 8.8.8.8 &> /dev/null; then
         echo "Network is up. Proceeding with installation."
@@ -173,14 +170,12 @@ for i in {1..5}; do
     else
         echo "Network not ready yet, retrying in 10 seconds... (Attempt $i/5)"
         sleep 10
-        INSTALL_SUCCESS=false
     fi
 done
 
 if ! $INSTALL_SUCCESS; then
     handle_error "yt-dlp installation failed. Could not configure the container."
 fi
-
 
 # --- Final Summary ---
 CT_IP=$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}')
