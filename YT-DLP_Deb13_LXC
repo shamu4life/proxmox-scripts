@@ -16,8 +16,8 @@ var_disk="${var_disk:-10}"
 var_os="${var_os:-debian}"
 var_version="${var_version:-12}"
 var_unprivileged="${var_unprivileged:-1}"
-# This variable is set to an empty command (a colon ':') which does nothing and exits successfully.
-# This will safely override the problematic final line in the build_container function.
+# This variable contains a colon ':', which is a bash command that does nothing and exits successfully.
+# It will safely override the problematic final line in the build_container function.
 var_install_override=':'
 
 # Run setup
@@ -27,13 +27,13 @@ color
 catch_errors
 
 # This line is the key fix. It re-assigns var_install after the 'variables' function has run.
-# The original 'lxc-attach' line will now effectively run 'bash -c ":"' which is harmless.
+# The original 'lxc-attach' line will now effectively run 'bash -c ":"' which is harmless and successful.
 var_install="$var_install_override"
 
 start
 build_container
 
-# Get the container ID from Proxmox
+# Get the container ID from Proxmox after creation
 CTID=$(pvesh get /cluster/resources --type vm --output-format json | \
   jq -r --arg NAME "$var_hostname" '.[] | select(.name==$NAME) | .vmid')
 
